@@ -1,0 +1,16 @@
+# QSkin · Theme / TDesign
+#
+# 模块 URI：QSkin.Theme.TDesign
+#
+# 走 CMake 时 qt_add_qml_module 会替你生成这个文件；这里手写一份，
+# 是为了让 qmllint / qml 能在脱离构建的情况下直接跑起来。
+#
+# TDesign 声明为 singleton：主题是全局单例，写成普通组件的话
+# 每 import 一次就会生成一份令牌副本，apply() 的作用域会变得混乱。
+#
+# slots/ 目录刻意不登记 —— 它们只被 TDesign.qml 内部使用，
+# 不该出现在模块的公共 API 里（与 Contracts 模块的取舍一致）。
+
+module QSkin.Theme.TDesign
+
+singleton TDesign 1.0 TDesign.qml

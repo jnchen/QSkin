@@ -1,0 +1,3 @@
+module QSkin.Theme.ArcoDesign
+
+singleton ArcoDesign 1.0 ArcoDesign.qml

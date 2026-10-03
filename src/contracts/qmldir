@@ -1,0 +1,284 @@
+module QSkin.Contracts
+
+# Slots 是全局插槽注册表 —— 主题通过 Slots.install() 换肤
+singleton Slots 1.0 Slots.qml
+
+QSkinButton   1.0 QSkinButton.qml
+QSkinInput    1.0 QSkinInput.qml
+QSkinInputGroup 1.0 QSkinInputGroup.qml
+QSkinInputNumber 1.0 QSkinInputNumber.qml
+QSkinCheckBox 1.0 QSkinCheckBox.qml
+QSkinSwitch   1.0 QSkinSwitch.qml
+QSkinSlider   1.0 QSkinSlider.qml
+QSkinProgress 1.0 QSkinProgress.qml
+QSkinTag      1.0 QSkinTag.qml
+QSkinBadge    1.0 QSkinBadge.qml
+QSkinBreadcrumb 1.0 QSkinBreadcrumb.qml
+QSkinSteps    1.0 QSkinSteps.qml
+QSkinSelect   1.0 QSkinSelect.qml
+QSkinTooltip  1.0 QSkinTooltip.qml
+QSkinTabs     1.0 QSkinTabs.qml
+QSkinMenu     1.0 QSkinMenu.qml
+QSkinPagination 1.0 QSkinPagination.qml
+QSkinDialog   1.0 QSkinDialog.qml
+QSkinDrawer   1.0 QSkinDrawer.qml
+QSkinToast    1.0 QSkinToast.qml
+QSkinForm     1.0 QSkinForm.qml
+QSkinFormItem 1.0 QSkinFormItem.qml
+QSkinTable    1.0 QSkinTable.qml
+QSkinTree     1.0 QSkinTree.qml
+QSkinDatePicker 1.0 QSkinDatePicker.qml
+QSkinTimePicker 1.0 QSkinTimePicker.qml
+TimeCell    1.0 TimeCell.qml
+
+# ── 浮球底板（M27）────────────────────────────────────────────────────────
+# 与 TimeCell 同档的**内部件**：不带 QSkin 前缀、不进组件表的 QSkin*.qml 计数。
+# 它由 QSkinBackTop 与 QSkinFloatButton 共用 —— 第二个消费者到了，所以抽
+# （判据同 MemberOrder / ScrollUtil / CornerUtil：出现第二个消费者就不该各写一套）。
+# 注册只为同目录/同模块能按名使用；它不是给宿主用的控件。
+FloatPlate  1.0 FloatPlate.qml
+
+# ── M18：布局与容器原子 ────────────────────────────────────────────────────
+# 这一批的依赖关系：Card / Layout / Splitter 内部都在用 Divider，
+# 所以它们必须同批落地 —— 单独先做 Card 的话，它要么侧身绕过分隔线，
+# 要么自己画一条（于是项目里出现第二条画线的代码）。
+QSkinDivider   1.0 QSkinDivider.qml
+QSkinAspectRatio 1.0 QSkinAspectRatio.qml
+QSkinScrollArea 1.0 QSkinScrollArea.qml
+QSkinCard      1.0 QSkinCard.qml
+QSkinLayout    1.0 QSkinLayout.qml
+QSkinSplitter  1.0 QSkinSplitter.qml
+
+# ── M19：列表与占位 ────────────────────────────────────────────────────────
+# 这一批的内部依赖是**真的**：QSkinList 的空态渲染 QSkinEmpty、加载态渲染
+# QSkinSpin，QSkinAvatarGroup 的每个槽位都是一个 QSkinAvatar。
+# 所以这六个必须同批落地 —— 先做 List 的话，它的空态要么自己画一遍
+# （项目里就有第二份空态），要么干脆没有。
+QSkinList      1.0 QSkinList.qml
+QSkinAvatar    1.0 QSkinAvatar.qml
+QSkinAvatarGroup 1.0 QSkinAvatarGroup.qml
+QSkinEmpty     1.0 QSkinEmpty.qml
+QSkinSkeleton  1.0 QSkinSkeleton.qml
+QSkinSpin      1.0 QSkinSpin.qml
+
+# ── M20：表单可选控件与文本输入 ────────────────────────────────────────────
+# 这一批的内部依赖有两条，都是**真的**：
+#   · QSkinRadioGroup / QSkinToggleGroup 不是布局容器，它们是成员状态的所有者；
+#     成员通过 `group:` 挂靠，所以组与成员必须同批落地 ——
+#     先做成员的话，它会退化成"自己能勾上自己"，与复选框没有区别。
+#   · QSkinLabel 是 label 插槽的宿主；QSkinTextarea / QSkinInputOTP 复用输入框底板。
+#     这三件都必须与它们复用的那一格同时在场，否则会各自长出自绘的第二份。
+QSkinRadio     1.0 QSkinRadio.qml
+QSkinRadioGroup 1.0 QSkinRadioGroup.qml
+QSkinTextarea  1.0 QSkinTextarea.qml
+QSkinLabel     1.0 QSkinLabel.qml
+QSkinRate      1.0 QSkinRate.qml
+QSkinInputOTP  1.0 QSkinInputOTP.qml
+QSkinToggle    1.0 QSkinToggle.qml
+QSkinToggleGroup 1.0 QSkinToggleGroup.qml
+
+# ── M21：浮层家族 ──────────────────────────────────────────────────────────
+# 内部依赖是"基座先落地"，而且是**真的**：Popconfirm 是 Popover + 一份内容，
+# HoverCard 是 Popover + 悬停触发。先做派生件的话，它们要么各写一遍锚定与
+# 翻转（项目里就会出现第四、第五份定位代码），要么干脆不翻转。
+#
+# Dropdown / ContextMenu 走的是另一条腿 —— 它们是"触发器 + QSkinMenu"。
+# 菜单的行语义（分隔线 / 危险项 / 上下键跳过分隔线）已经在 QSkinMenu 里，
+# 重复一遍只会得到第二套键盘导航。
+#
+# 六个件共用一条"同刻只有一个排他浮层"的规矩，那份实现只有一处：
+# QSkin.Foundation 的 OverlayStack 单例（见那边文件头）。
+QSkinPopover   1.0 QSkinPopover.qml
+QSkinPopconfirm 1.0 QSkinPopconfirm.qml
+QSkinHoverCard 1.0 QSkinHoverCard.qml
+QSkinDropdown  1.0 QSkinDropdown.qml
+QSkinContextMenu 1.0 QSkinContextMenu.qml
+QSkinNotification 1.0 QSkinNotification.qml
+
+# ── M22：反馈与结果 ────────────────────────────────────────────────────────
+# 这一批的依赖是"同一枚记号"：三件都要"按语义画一个记号"，所以先把记号
+# 收成插槽（statusGlyph，Slots 的第六族），三件再各自用它 ——
+# 否则三处各画一遍，就是 Slots.qml 文件头里记的那个病（同一 affordance
+# 四种画法，其中一种还是字符）。
+#
+# AlertDialog 是 Dialog 的**预设**而不是它的替代：零新增插槽，
+# 记号走 statusGlyph、标题走 label、按钮区走 ButtonBar。
+# 按钮区固定两个（取消 + 确定）—— 要自定义按钮行请用 QSkinDialog。
+QSkinAlert     1.0 QSkinAlert.qml
+QSkinResult    1.0 QSkinResult.qml
+QSkinAlertDialog 1.0 QSkinAlertDialog.qml
+
+# ── M23：折叠 / 分段 / 时间轴 / 轮播 ──────────────────────────────────────
+# 这一批的内部依赖有两条，都是**真的**：
+#   · Collapse / Timeline 的成员要按**声明序**排（兄弟节点的 onCompleted 是
+#     逆声明序触发的），而那份排序在 M23 从 QSkinRadioGroup 里抽到了
+#     QSkin.Foundation.MemberOrder —— 三件容器共用它，别再抄第四份。
+#   · Segmented / Timeline 各需要一格新插槽（segmentThumb / timelineDot），
+#     理由都是"同一主题里两种取值必须并存"，见两份 Basic* 文件头。
+#     新插槽与宿主必须同批落地，否则会各自长出自绘的第二份。
+#
+# Collapsible（shadcn 拆出来的那一个）**不是**独立控件 —— 它是
+# QSkinCollapseItem 的"不给组"用法（差别只在有没有组与有没有外框）。
+QSkinCollapse  1.0 QSkinCollapse.qml
+QSkinCollapseItem 1.0 QSkinCollapseItem.qml
+QSkinSegmented 1.0 QSkinSegmented.qml
+QSkinTimeline  1.0 QSkinTimeline.qml
+QSkinTimelineItem 1.0 QSkinTimelineItem.qml
+QSkinCarousel  1.0 QSkinCarousel.qml
+
+# ── M24：描述列表 / 数值 / 图片 / 二维码 / 月历 / 评论 / 引导 ─────────────
+#
+# 这一批是**第一次一格插槽都没开**（Slots 仍是 21 格）。M20 开了 2 格、
+# M21 开了 0 格但新开了浮层契约、M22 开了 1 格（statusGlyph，第六族）、
+# M23 开了 2 格。原因不是这批的件不重要，是它们要的东西**令牌和既有插槽
+# 就装得下**：
+#   · QSkinDescriptions 的标签/取值 → label 插槽 + 描边令牌
+#   · QSkinStatistic 的数值字号 → Theme.font（数量级差异由 Theme.font.xl
+#     承担，不是形态分歧）
+#   · QSkinImage 的圆角/遮罩 → 属性 + 令牌；放大镜与关闭 × 是**矢量直绘**
+#     （× 是第三次抄 QSkinAlert 的坐标，触发点写在该文件头里）
+#   · QSkinCalendar 的选中/今天 → 状态，不是形态
+#   · QSkinComment / QSkinTour → 全部由既有插槽与地基预设承担
+# 判据仍是 M21 那条：只为"同一主题里两种取值必须并存"的**形态**分歧开格。
+# 这条要能被证伪，所以 `tests/smoke_m24.qml` 里钉了一条
+# `Slots.slotNames.length === 21`。
+#
+# 内部依赖只有一条，是**真的**：QSkinQRCode 的矩阵算法在
+# `QSkin.Foundation.QRCodeEncoder`（那份实现能在 node 下被 require，
+# 于是它与 qrcode 库逐模块比对、再用 zxing-cpp 往返回读 —— 三条独立
+# 算路）。控件本身一行编码都没有，只负责把矩阵画成 SVG 路径。
+#
+# 三件是**模态**浮层的宿主（QSkinImage 的预览、QSkinTour 的遮罩），
+# 它们都只写 `modal: true`、**不**登记 OverlayStack —— 与 Dialog /
+# Drawer 同一档（见 OverlayStack 文件头："这里只登记非模态的排他浮层"）。
+#
+# QSkinCalendar 与 QSkinDatePicker **不是**同一个件的两种形态：前者是常驻
+# 内容（自己的头部、自己的网格），后者是输入控件（value + 开合面板）。
+# 共用的只有 DateUtil 的算法与 42 格渲染约定。
+QSkinDescriptions 1.0 QSkinDescriptions.qml
+QSkinDescriptionsItem 1.0 QSkinDescriptionsItem.qml
+QSkinStatistic 1.0 QSkinStatistic.qml
+QSkinImage     1.0 QSkinImage.qml
+QSkinQRCode    1.0 QSkinQRCode.qml
+QSkinCalendar  1.0 QSkinCalendar.qml
+QSkinComment   1.0 QSkinComment.qml
+QSkinTour      1.0 QSkinTour.qml
+
+# ── M25：锚点 / 吸附 / 回顶 / 页头 / 命令面板 / 导航菜单 / 菜单条 / 侧栏 ──
+#
+# 这一批**第一次以"滚动位置"为状态**：Anchor 跟随高亮、Affix 粘性、BackTop
+# 阈值。它与抓图纪律（"同一份源码要出同一张图"）正面冲突，处置办法是
+# **把滚动宿主当输入**，不是一个可选的实现细节：
+#   · 三件都吃 `target: Flickable`，自己不造滚动、不接管滚轮。
+#     `QSkinScrollArea` 早就有 `flickable` / `contentX` / `contentY` 直通
+#     （M18 落的），契约现成。
+#   · 于是抓图脚本可以直写 `target.contentY = N` —— 瞬时、无动画、不碰
+#     真实输入（本仓"抓图要确定性"那条的老手法）。
+#   · 而三件的核心都是**纯函数**，落在地基层：
+#     `QSkin.Foundation.ScrollUtil`（段索引 / 吸附位移 / 回顶可见 / 夹取）。
+#     门禁能在 node 下把它们**穷举**打一遍，不必开界面。
+#
+# 内部依赖只有一条是**件与件之间**的，是真的：
+#   · QSkinSidebar 的行是 QSkinSidebarItem（侧栏只负责分组、选中、折叠、
+#     图标态与宽度，一行长什么样不归它管）。
+# 其余都是"件 → 地基/插槽"：
+#   · QSkinMenubar → QSkinMenu 的**那一个**面板（切换时只换 model 与位置，
+#     不是每栏一个面板 —— 那样关一个再开一个会出现空帧闪烁）。
+#   · QSkinNavigationMenu → OverlayStack（**不靠 QSkinMenu 拿排他**）+ 一格
+#     宿主给的任意内容 Component。
+#   · QSkinCommand → FuzzyMatch（打分器在地基层只有一份，本件一行匹配都没有）。
+#
+# **零新增插槽**（Slots 仍是 21 格）。裁决四写了六个具名反例
+# （anchorInk / floatPlate / backTopArrow / pageBackArrow / menuPanel /
+# sidebarCollapseArrow）逐条说明为什么不开；裁决五原本要给 BackTop 复用
+# `buttonBackground`，**落地时实测装不下**（那格契约不读 radius，四家按钮
+# 圆角都不是圆），改为本件直绘 + 令牌，理由写在 QSkinBackTop.qml 文件头。
+# 这条要能被证伪，所以 `tests/smoke_m25.qml` 里钉一条
+# `Slots.slotNames.length === 21`（M24 同款）。
+#
+# 三件是**改既有件契约**才装得下的，改动都记在原文件里：
+#   · QSkinMenu 新增 `signal closed()` —— Menubar 关面板时要复位 activeIndex
+#     并把焦点还给标题条。原先挂在 `onClosed` 上（那是 Popup 的），
+#     那个 handler **从来没跑过**，是 qmllint 的 "no matching signal found
+#     for handler" 唯一抓到的。
+#   · 无（其余两件在 M25 之前就备好了：QSkinScrollArea 的别名、
+#     OverlayStack 的 request/drop）。
+QSkinAffix         1.0 QSkinAffix.qml
+QSkinAnchor        1.0 QSkinAnchor.qml
+QSkinBackTop       1.0 QSkinBackTop.qml
+QSkinCommand       1.0 QSkinCommand.qml
+QSkinPageHeader    1.0 QSkinPageHeader.qml
+QSkinMenubar       1.0 QSkinMenubar.qml
+QSkinNavigationMenu 1.0 QSkinNavigationMenu.qml
+QSkinSidebar       1.0 QSkinSidebar.qml
+QSkinSidebarItem   1.0 QSkinSidebarItem.qml
+
+# ── M26 ────────────────────────────────────────────────────────────────────
+QSkinTreeSelect    1.0 QSkinTreeSelect.qml
+QSkinCascader      1.0 QSkinCascader.qml
+QSkinColorPicker   1.0 QSkinColorPicker.qml
+QSkinTransfer      1.0 QSkinTransfer.qml
+QSkinAutoComplete  1.0 QSkinAutoComplete.qml
+QSkinMentions      1.0 QSkinMentions.qml
+
+# ── M27：键帽 / 水印 / 瀑布流 / 按钮组 / 悬浮按钮 / 上传壳 ──────────────────
+#
+# 六件的技术主题各不相同（这一批是清单上最后一块），但有三条共同的账：
+#
+#   · **零新增插槽**（Slots 仍 21 格）。本批唯一动契约的地方是给**既有**的
+#     buttonBackground 加了一个读取字段 `groupPosition`（ButtonGroup 的
+#     三态圆角）—— 白名单长度不变。`tests/smoke_m27.qml` 钉一条
+#     `Slots.slotNames.length === 21`（M24/M25/M26 同款）。
+#   · **QSkinUpload 一行 IO 都没有**。"真实 IO 由宿主注入"的落法是
+#     「一个信号 + 三个方法」（uploadRequested / reportProgress /
+#     reportSuccess / reportFailure），于是每一次副作用都是一次**可数的
+#     调用** —— 像素核验在这里基本无效，能证伪的是调用序。见裁决一。
+QSkinKbd           1.0 QSkinKbd.qml
+QSkinWatermark     1.0 QSkinWatermark.qml
+QSkinMasonry       1.0 QSkinMasonry.qml
+#
+# 按钮组（M27 裁决四）。它是本仓第一个**拉模型**容器：位置不由组推给成员，
+# 而是成员（QSkinButton.groupPosition）反向问组 `positionOf(this)`。两条理由
+# 都是实测过的 —— "父项赋值会打断绑定"（M26 QSkinTree）与"兄弟节点 onCompleted
+# 是逆声明序"（MemberOrder）。根类型是 `QQ.Row` 而不是 QSkinRow：后者会把子项
+# 重挂到内层，按钮的 parent 就不是组了（三条探针见文件头）。
+QSkinButtonGroup   1.0 QSkinButtonGroup.qml
+#
+# 悬浮按钮（M27 裁决五）。与 QSkinBackTop 共用 FloatPlate，但**不是**它的
+# 泛化：记号一个固定 ↑、一个走内容槽；出现时机一个看滚动阈值、一个完全
+# 由宿主决定。同层共用底板比互相继承便宜（论证见 QSkinFloatButton 文件头）。
+QSkinFloatButton   1.0 QSkinFloatButton.qml
+#
+# 上传（M27 裁决一）。**本件一行 IO 都没有**：状态机（条目表 / status /
+# progress / error / retryCount / 全部派生量）归控件，真实 IO 归宿主的
+# 「一个信号 + 三个方法」（uploadRequested / reportProgress / reportSuccess /
+# reportFailure）。于是每一次副作用都是一次**可数的调用**，这一件的闸也就
+# 落在「调用序」上 —— 像素核验在这里基本无效（屏幕上只有几条进度条）。
+#
+# 取舍与四条实测（拉模型 + 自增版本号的取值链、ShapePath 的虚线枚举在本仓
+# 只剩 SolidLine/DashLine）都写在文件头。
+QSkinUpload        1.0 QSkinUpload.qml
+
+#
+# 倒计时（M30）。它**先有注入、再有走时**：`now` 默认 -1（哨兵）= 用内部
+# Timer 走；一旦宿主注入任何别的值，内部 Timer 立刻停、画面完全由注入值
+# 决定。这是"会自己变的控件不可抓"那条硬约束的解法 —— 同 QSkinCalendar 的
+# today / panelYear。排版一律继承 Body（含四个行内修饰位与 mono 逃生口），
+# 多出的只有时间字段与两档格式化。数字抖动"本机实测不需要处理"的逐位测量
+# 与新造的 NaN 归零规则都写在文件头。
+QSkinCountdown     1.0 QSkinCountdown.qml
+
+#
+# 链接（M30）。它存在的理由是**了结 label 插槽上记了二十多个里程碑的
+# 那个缺口**（README 第 169 行：「label 无下划线语义」）。所以 M30 分两半
+# 做，缺一半都不算完：
+#   ① 契约侧 —— label 插槽新增 `link` 变体 + `labelUnderline` 读取字段。
+#      `link` 是必需的：Ant / Arco 的非 hover 态是**正文色**，拿 ghost /
+#      text 当链接会渲染成一段黑字（见两家的注释）。
+#   ② 控件侧 —— 本件，一个颜色字面量都没有，字体/颜色/下划线全归插槽。
+# 另两条裁决：`href` **不**自动打开（控件里不写 IO，同 QSkinUpload）；
+# 只做 link / muted / danger 三个变体（label 家族没有 success / warning）。
+QSkinLink          1.0 QSkinLink.qml
+
+# slots/ 子目录下的 Basic* 是默认实现，由 Slots.qml 用 import "slots" 引入，
+# 不在这里注册 —— 它们不是对外 API，主题作者替换时也不会直接引用。

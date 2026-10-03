@@ -1,0 +1,38 @@
+# ── 本机工具链与中间产物（不入库）──────────────────────────────────────
+# ⚠ 注释必须**独占一行**：Git 的 .gitignore **不支持行尾注释**，
+#   `.qt/  # 说明` 会被整行当成一个模式（连 `# 说明` 一起），于是这条**完全失效**。
+#   实测：本文件原先就是这种写法，`.qt/` `.cache/` `build/` 三条全部没生效 ——
+#   `git add -A` 会把 **50402 个文件**（含 1.8 G 的 Qt SDK）塞进首次提交。
+#   改完务必用 `git status --porcelain | wc -l` 复核，别只看文件写没写。
+
+# aqt 下载的 Qt（1.8 G，只为本机跑门禁）
+.qt/
+
+# cmake 构建产物
+build/
+
+# 门禁中间产物：抓图 / import 树副本 / 一次性探针 / 历史归档
+.cache/
+
+# 探针遗留目录（qt5 二分排查时留下的）
+qt5_probe/
+
+# ── 开发过程文档（**不是**说明书，不随发行版发布）──────────────────────
+#   现状（进仓库）：README.md · COVERAGE.md · CHANGELOG.md · docs/PITFALLS.md
+#   过程（只在工作副本）：ROADMAP.md（排期 + 读数 + checklist）
+#                        docs/PROGRESS.md（M0–M27 里程碑流水）
+/ROADMAP.md
+/docs/PROGRESS.md
+
+# ── 零散垃圾 ───────────────────────────────────────────────────────────
+# tools/install-qt.sh 每跑一次都会重生成
+aqtinstall.log
+*.log
+*.raw
+*.bak
+*.tmp
+*.done
+
+# Python 字节码
+__pycache__/
+*.pyc

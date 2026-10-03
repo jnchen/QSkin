@@ -1,0 +1,26 @@
+# ── QSkin 的行尾策略：忠实保留原样，禁止 Git 做自动转换 ───────────────────────
+#
+# 本仓是**混合行尾**的：32 个 .sh 与 21 个 .py 全部 LF，而 README.md、
+# src/contracts/qmldir 与 20 个 .qml 是 CRLF。这个分布是历史形成的，
+# 不是 bug —— 但它是 Git 默认行为下的**地雷**。
+#
+# ⚠ core.autocrlf=true 会做什么：
+#     · 入库时把所有 CRLF 规范化成 LF；
+#     · **检出时把整个工作副本铺回 CRLF** —— 包括那 32 个 .sh。
+#   后果是在 Linux / macOS 上 clone 之后：
+#     bash: ./tools/lint.sh: /bin/bash^M: bad interpreter: No such file or directory
+#   全仓构建与门禁脚本一起废掉，而且报错信息完全指向不了真正的原因。
+#   （Windows 侧反而看不出来 —— 这颗雷只炸别人。）
+#
+# `-text` = 「别动行尾，字节原样进出」。混合行尾因此被完整保留下来，
+# 脚本在任何平台 clone 之后都仍是 LF。
+#
+# 代价要说清：将来若要把全仓统一成 LF，得**有意地**做一次重规范化
+# （`*.qml text eol=lf` + `git add --renormalize .`）+ 重跑全量门禁。
+# 那是一次该被 review 的改动，不该由 Git 在背后悄悄完成。
+
+* -text
+
+# 二进制：连内容判定都别做
+*.png binary
+*.qm  binary

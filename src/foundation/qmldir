@@ -1,0 +1,115 @@
+module QSkin.Foundation
+
+singleton Theme 1.0 Theme.qml
+singleton Breakpoints 1.0 Breakpoints.qml
+singleton DateUtil 1.0 DateUtil.qml
+singleton TreeUtil 1.0 TreeUtil.qml
+
+# 成员列表的声明序（M23）。从 QSkinRadioGroup 的私有函数里**抽出来**的 ——
+# Qt 对兄弟节点的 onCompleted 是逆声明序触发的，所以"按注册先后维护成员
+# 列表"这条写法是错的，必须按 children 下标路径排。M23 的三件容器
+# （Collapse / Timeline / Segmented）都要它，于是它到了第二个消费者的门口。
+# 判据与实测记录见 MemberOrder.qml 文件头。
+singleton MemberOrder 1.0 MemberOrder.qml
+
+# 浮层协调（M21）。"同一时刻只能有一个排他浮层"这件事**只在这里**有一份实现 ——
+# 放进插槽会违反契约第 3 条（插槽不能引入交互），放进控件则六个浮层件各写一套。
+# 悬停类浮层（Tooltip / HoverCard）根本不进来：它不该顶掉用户刚点开的东西。
+singleton OverlayStack 1.0 OverlayStack.qml
+
+# 二维码矩阵编码（M24）。**一份实现、两个消费者**：
+#   · QML 侧 —— QSkinQRCode 用 QRCodeEncoder.encode() 拿矩阵
+#   · node 侧 —— .cache/_qrdump.js 直接 require 同目录的 QRCodeEncoder.js，
+#     于是"与 qrcode 库逐模块比对 / 与 segno 归因 / zxing 往返回读"
+#     这三条独立算路才可能成立
+#
+# 中间那层 QRCodeEncoder.qml 是**薄转发**，不是第二份实现。它存在的唯一
+# 原因是 QML 与 node 的模块解析规则不同（.js 在 import 树里被放到
+# QSkin/Foundation/ 下，跨模块目录只能写首字母大写的相对路径，而 node 那边
+# require 走的是真实源码目录）—— 详见 QRCodeEncoder.qml 的文件头。
+singleton QRCodeEncoder 1.0 QRCodeEncoder.qml
+
+# 滚动位置的纯计算（M25）。M25 有三个件的状态完全由滚动位置决定
+# （Anchor 跟随高亮 / Affix 固钉 / BackTop 阈值），而抓图纪律的头一条是
+# 确定性 —— 于是把三处判定**收成一份纯函数**，属性门禁与像素门禁读同一个数。
+# 它与 FuzzyMatch 是这一批两个"可被独立算路打"的地基件，差别在于：
+# ScrollUtil 的输入输出都是数，冒烟测试直接调它即可；FuzzyMatch 的输出是
+# 一个 2^n 种对齐里选最优的组合问题，值 node 能跑同一份源码、用穷举交叉验证。
+# 完整论证见两份文件头，以及 COVERAGE.md 第七节的「M25 五项裁决」。
+singleton ScrollUtil 1.0 ScrollUtil.qml
+
+# 模糊匹配打分（M25）。一份实现、两个消费者：
+#   · QML 侧 —— QSkinCommand 用它算分数与命中下标（高亮）
+#   · node 侧 —— .cache/_verify_m25.py 直接 require 同目录的 FuzzyMatch.js，
+#     用**穷举所有合法对齐**做独立算路比对（与 DP 无共享代码）
+# 中间那层 FuzzyMatch.qml 是薄转发，不是第二份实现 —— 与 QRCodeEncoder 同源。
+singleton FuzzyMatch 1.0 FuzzyMatch.qml
+
+# 颜色换算与取色几何（M26）。一份实现、两个消费者：
+#   · QML 侧 —— QSkinColorPicker 用它算色域面 / 色相条 / 预设色块
+#   · node 侧 —— .cache/_verify_m26color.js 直接 require 同目录的 ColorUtil.js，
+#     用**走 HSL 中转**的另一份公式做独立算路比对（与 sector 分支无共享代码）
+# 中间那层 ColorUtil.qml 是薄转发，不是第二份实现 —— 与 FuzzyMatch / QRCodeEncoder 同源。
+singleton ColorUtil 1.0 ColorUtil.qml
+
+# 瀑布流列分配（M27）。一份实现、两个消费者：
+#   · QML 侧 —— QSkinMasonry 用它算每项落哪一列、什么坐标、总高多少
+#   · node 侧 —— .cache/_verify_m27.py 直接 require 同目录的 MasonryUtil.js，
+#     对**输出**验四条不变量（y 一致性 / 落列规则 / 总高不含尾缝 / 不重叠），
+#     **不重跑**分配算法 —— 重跑同一个贪心只能证明"没有随机性"。
+# 中间那层 MasonryUtil.qml 是薄转发，不是第二份实现 —— 与上面四件同源。
+# 它与 ScrollUtil 的差别值得记一笔：ScrollUtil 的正确性由**手推期望值**守，
+# 因为它的每个函数都只有唯一解；Masonry 的贪心**不是最优解**，所以门禁
+# 只能守"符合它自己声明的定义"，不能断言"没有更好的分配"（见 .js 文件头
+# 的已知边界第 1 条）。
+singleton MasonryUtil 1.0 MasonryUtil.qml
+
+# 分组按钮的三态圆角映射（M27）。一份实现、**五个**消费者：
+#   · QML 侧 —— slots/BasicButtonBackground 与四家主题的 TD/AD/AC/SC
+#     ButtonBackground，各自 read-only 地取四角半径
+#   · QSkinButtonGroup 也用它把「第几个 / 一共几个」翻成方位名
+#   · node 侧 —— 门禁直接 require 同目录的 CornerUtil.js，穷举
+#     position × radius 验角序、standalone 恒等、first/last 互补、
+#     middle 全零，以及 positionOf 的三条边界
+# 中间那层 CornerUtil.qml 是薄转发，不是第二份实现 —— 与上面五件同源。
+# 它是本仓第一份**为插槽服务**的地基件（前面几件服务的都是控件）。
+# 另：它不改 QtQuick 的导入版本 —— 四角独立半径需要不带版本号的
+# `import QtQuick`，那条实测与理由记在 .js 文件头与 COVERAGE 裁决四。
+singleton CornerUtil 1.0 CornerUtil.qml
+
+QSkinWindow 1.0 QSkinWindow.qml
+
+# 布局容器（M29 改名，去掉了双名注册）。
+#
+# 原状：三个文件叫 Row.qml / Column.qml / Grid.qml，并**同时注册两个名字**
+# （裸名 + QSkin 前缀）。双名在源侧可行 —— qmldir 允许多行指向同一个文件 ——
+# 但**CMake 侧表达不出来**：`QT_QML_SOURCE_TYPENAME` 是**单值**属性，官方构建
+# 产物里只留下裸名，于是所有写 `QSkinRow` / `QSkinColumn` / `QSkinGrid` 的文件在
+# 构建路径下全部加载失败。M28 实测现场：
+#
+#     examples/HelloContracts.qml:104: QSkinColumn is not a type
+#
+# 选择"改成 QSkin 前缀"而不是"删掉前缀那一组"的两个理由：
+#   · 双名还踩着另一个坑 —— 契约模块里写裸 `Row`，**恰好**解析到了本模块的
+#     Row（靠 import 顺序），而这条依赖**没有任何东西在守**；它曾经工作，
+#     纯属运气。实测证据：QSkinDatePicker:504 的 `Row { gap: 2 }` 里那个 `gap`
+#     是 QSkin 的旋钮（QtQuick.Row 只有 spacing），它能跑通就说明解析到了我们。
+#   · 统一到前缀后，裸 `Row` 稳定地指 QtQuick 的 positioner —— 少一件要人
+#     记住的事，而不是多一件。
+#
+# 记账：ROADMAP.md §四；构建侧的三条豁免已随之撤销（见 CMakeLists.txt）。
+QSkinRow 1.0 QSkinRow.qml
+QSkinColumn 1.0 QSkinColumn.qml
+QSkinGrid 1.0 QSkinGrid.qml
+ButtonBar 1.0 ButtonBar.qml
+FocusRing 1.0 FocusRing.qml
+Spacer 1.0 Spacer.qml
+Heading 1.0 Heading.qml
+Body 1.0 Body.qml
+
+# 段落（M30）。根类型是 Body，本件只加"按行数截断"（maxLines）——
+# 排版一律继承，不抄第二份。理由与"截断为什么必须 maximumLineCount
+# 与 elide 一起给"写在 Paragraph.qml 文件头。
+Paragraph 1.0 Paragraph.qml
+
+Caption 1.0 Caption.qml

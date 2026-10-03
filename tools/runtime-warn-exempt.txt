@@ -1,0 +1,102 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# QSkin · 运行期警告 · 存量豁免名单（第十二道门）
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# 读这份名单只需要知道三件事：
+#
+#   1. **格式**：`形态<TAB>出处<TAB>消息`，三格都要有，分隔符是**制表符**。
+#      键里**不含行号** —— 行号会漂。本项目栽过：COVERAGE 里原写
+#      「QSkinRow.qml:110」，M29 重写那个文件之后它就指到别处了。
+#      所以指路一律用"结构名 + 消息"。
+#
+#   2. **两件事会判红**，都要求人看一眼：
+#        · 没被列在这里的警告      → 新增即红
+#        · 列在这里却一条都没命中  → 过期豁免
+#      过期豁免的成因有两种，处置完全不同（报告里会把两种都写出来）：
+#      真修好了 → 删掉这行；只是**触发它的冒烟变了** → 那是覆盖变窄，先补覆盖。
+#
+#   3. **这份名单的目标是变短。** 每一条都要有理由（写在族注释里）；
+#      修掉一族就把那一族的条目整段删掉 —— 而 **"删条目"本身就是那次修复
+#      的证伪**：删早了会红（说明没修干净），删对了才会绿。
+#
+# ⚠ 别用 `--write-exempt` 重新生成它：那会把"当前所有警告"一次性变成绿，
+#   把这份名单从"账目"退化成"橡皮图章"。那个开关只用在新一批迁移的起点。
+#
+# ⚠ 前提：名单是对着**本机 mingw64 / Qt 6.8.3** 量的。换平台插件或换 Qt
+#   版本，警告集合可能不同 → 会把一批豁免判成过期。详见核验器文件头的
+#   「已知未覆盖」。
+#
+# ⚠ 覆盖范围只有 `tests/smoke_*.qml`。场景（scene_*）与真鼠标事件（tst_*）
+#   那两段不在累积范围内 —— 同样记在核验器文件头。
+#
+# 当前口径（M31 第二件**收口后**）：48 个冒烟文件 → 引擎诊断 **179 行 / 15 条键**，
+# 另有 20 行 `qml: ` 自家输出（不判）。
+# 收口前是 868 行 / 26 条键 —— 差的 **689 行 / 11 条键**正是本批修掉的四族
+# （族① 5 条 + 族② 3 条 + 族③ 2 条 + 族④ 1 条），条目已从本名单整段删除。
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+
+# ── 族 ①–④ 已在 **M31 第二件** 修掉，条目整段删除（11 条）
+#
+#   删条目本身就是那次修复的证伪：还没修干净它会红。
+#   留在此处的只有结论，取证与读数在 ROADMAP §6.1 / §6.4：
+#     · 族 ① `Unable to assign [undefined] to double`（5 条 · 658 行）
+#       —— 五个 SelectOverlay 补 `!== undefined` 守卫；
+#          外加 `QSkinNavigationMenu` 的假宿主补报 `width`
+#          （七个共用 selectOverlay 的宿主里唯一漏报的那个）。
+#     · 族 ② `Detected anchors on an item that is managed by a layout`（3 条 · 26 行）
+#       —— `QSkinBadge.plate` 改 `Layout.fillHeight`、`QSkinTag.closeBtn` 删多余锚点。
+#     · 族 ③ `TypeError: Cannot read property 'width'/'height' of null`（2 条 · 2 行）
+#       —— `QSkinDrawer` 四处几何加 `parent ?` 守卫。
+#     · 族 ④ `QML PropertyChanges: Cannot assign to non-existent property "opacity"`（1 条 · 3 行）
+#       —— `QSkinToast` 两条 `PropertyChanges` 补 `target`。
+#          ⚠ 这一条与另外三族**性质不同**：修好它 = 淡出真的会淡出，是**行为变更**
+#          （画面会变），不是"像素不变"。独立裁决见 ROADMAP §6.4。
+#
+#   ⚠ 族号沿用原编号（①–⑥），**不重排** —— 重排会让别处引用的"族 ⑤/⑥"指错。
+#     所以下面从"族 ⑤"接续，中间缺号是**故意**的。
+
+
+
+# ── 族 ⑤ `QML Binding: Property 'control' does not exist`（14 条 · 181 行）· **不属本批**
+# 成因：`Binding { target: 槽位实例; property: "control" }` 注入宿主引用时，
+# 槽位实现**没有声明 `control`**。
+#
+# **为什么本批不动它**（三条，逐条可核）：
+#   1. 本仓**自己的**槽位实现全部声明了 `control` —— 六个 label 实现
+#      （BasicLabel + 四主题 label）用同一条 grep 逐个验过，计数全为 1。
+#   2. 警告全部来自**测试故意装的假槽位**。实例：
+#      `tests/smoke_m24_theme.qml:556` 的 `Slots.install({ label: fakeComp })`
+#      —— 那一段的**目的**就是证明 install() 装上去了，负向夹具是刻意造的。
+#   3. 所以这一族不是"库写错了"，而是**一条契约只有警告在守**：
+#      「插槽根对象必须声明 control」写在 Slots.qml 里，没有任何一道门检查它。
+#      正解是**补一道插槽契约门**，不是把警告按下去。
+#      （与 M27 记下的原话一致：「用'把假件写对'绕过它不是解法，
+#      只是让噪声别淹掉真信号；补一道门才是。」）
+# → 处置：留在豁免里，账记在 ROADMAP。**不要**用"把假件写对"来了结它。
+NOEXIST	QSkin/Contracts/QSkinAnchor.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinButton.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinCalendar.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinCascader.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/QSkinColorPicker.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/QSkinCommand.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinDescriptionsItem.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinSidebarItem.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+NOEXIST	QSkin/Contracts/QSkinTabs.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/QSkinTransfer.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/QSkinTree.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/QSkinTreeSelect.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/slots/BasicButtonContent.qml	QML Binding: Property 'control' does not exist on QQuickItem.
+NOEXIST	QSkin/Contracts/slots/BasicButtonContent.qml	QML Binding: Property 'control' does not exist on QQuickRectangle.
+
+
+
+# ── 族 ⑥ `Binding loop detected for property "_uniformLabelWidth"`（1 条 · 1 行）· **本批不动，但已记账**
+# 成因待查：`QSkinDescriptions` 的 `_uniformLabelWidth` 上有一条绑定环。
+# 这一条是**新成员** —— M27 那次审计的形态集里没有 "Binding loop" 这一类，
+# 所以那 675 行里不含它。本闸的形态集把它收进来了，于是它第一次露面。
+# 处置：本批不动（改 QSkinDescriptions 的宽度统一算法会牵动 M24 那一批的
+# 像素基线，且绑定环的成因要单独查）。**记在这里 = 它已经在视野里了**，
+# 不是"忘了"。
+BINDLOOP	tests/smoke_m24_theme.qml	QML QSkinDescriptions: Binding loop detected for property "_uniformLabelWidth": ⏎ QSkin/Contracts/QSkinDescriptions.qml

@@ -1,0 +1,54 @@
+# QSkin i18n 豁免表 —— 存量"库自产文案"的账目（M33 开工时的实测快照）
+#
+# 格式：<组><TAB><相对路径><TAB><归一化行指纹>
+# 组：A=属性默认值  B=内联  Bp=无障碍  C=算路层(.js)  D=开发者(不 i18n)
+#
+# ★ 这张表**只减不增**：修掉一处就删一条。
+#   `tools/check-i18n.py` 的判据 2 会检查"已改成 qsTr 的还在不在表里"，
+#   还在就红 —— **删条目本身就是证伪**。
+#
+# 组义（每一类的处置不同，不是"一律加 qsTr"）：
+#   A  默认值包 qsTr，属性保持可覆盖
+#   B  提成属性 + 用 %1 占位符（不许用 + 拼，lupdate 会把碎片抽成两条）
+#   Bp 全量 qsTr（读屏软件念的东西最该本地化）
+#   C  纯算路层，**不能 qsTr**（要在 node 里裸跑）→ 错误码化，QML 层翻译
+#   D  开发者可见（日志/调试/算法用字符表/解析用正则）→ 不 i18n，登记防误改
+#
+# 生成时计数（M33-1 开工快照）：A=38  B=18  Bp=38  C=8  D=5   合计 107 条
+#            另有 2 条**已经是 qsTr 形式**（不欠账，故不入表）
+#            （含 CJK 的文案行总数 = 本表条数 + 已 qsTr 条数）
+#
+# 当前计数（每修一批就更新这一段 —— **数字一律实测复算，不要抄上面的**）：
+#   M33-6（DateUtil 格式本地化）之后：
+#     A=0  B=0  Bp=0  C=0  D=7   合计 7 条
+#
+#     · **A / B / Bp 三类全清零** —— §8.6 判据 ② 成立（本批完成）。
+#       A 2 + B 2 的落点其实是 **3 处语句 / 4 行账目**：`weekdayLabels`（1 行）
+#       改 7 条 qsTr、`monthLabels`（跨行 2 行 = 1 条语句）改 12 条、
+#       `formatTime` 的 A token（1 行）提成 `amPmLabels` 属性（2 条）。
+#     · `DateUtil.qml` 另有 3 条**解析方向**的字面量留在 D 区 —— 它们是
+#       `parseTime` 的**接受集**，不是展示文案，不 i18n（见该函数注释）。
+#
+#   （留档）M33-5 之后：A=2  B=2  Bp=0  C=0  D=7   合计 11 条
+#     · C 清零：`QRCodeEncoder.encode()` 只返回 `code` + `params`（另有 ASCII
+#       的 `error` 诊断串给 node / 日志），用户可见的话归 `QSkinQRCode.errorText`
+#       按 `code` 翻译（4 条 qsTr）。
+#     · FuzzyMatch 的 2 条从 C 改判 D（源码一个字没动）：`SEPARATORS` 是分词
+#       字符表、`"score=null (不匹配)"` 是 `explain()` 的门禁诊断输出。
+#     · Bp 在 M33-2 清零；A 38 → 2（M33-3）、B 18 → 2（M33-4）。
+# ---------- A ----------
+# （**已清零**，M33-6 —— 星期/月名改走 qsTr，见 DateUtil.qml 的 *Labels 属性）
+# ---------- B ----------
+# （**已清零**，M33-6 —— 「上午/下午」提成 amPmLabels；monthLabels 续行同批）
+# ---------- Bp ----------
+# （**已清零**，M33-2）
+# ---------- C ----------
+# （**已清零**，M33-5 —— 「算路层不产文案」现在是源码事实）
+# ---------- D ----------
+D	src/contracts/Slots.qml	+ "'，已忽略。合法名字见 Slots.slotNames。")
+D	src/contracts/Slots.qml	console.warn("QSkin.Slots.install(): 未知插槽名 '" + key
+D	src/foundation/DateUtil.qml	.replace("A", function() { map.push("A"); return "(上午|下午|AM|PM)" })
+D	src/foundation/DateUtil.qml	if (!hasA && /上午|下午|AM|PM/.test(String(str)))
+D	src/foundation/DateUtil.qml	pm = (raw === "下午" || raw === "PM")
+D	src/foundation/FuzzyMatch.js	if (!r) return "score=null (不匹配)\n" + t
+D	src/foundation/FuzzyMatch.js	var SEPARATORS = " \t\n\r-_/\\.:,;|·、，。：；！？（）()[]{}<>#@+*&=%$^~`\"'"
