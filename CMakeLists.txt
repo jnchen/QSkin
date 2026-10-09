@@ -155,6 +155,7 @@ set_source_files_properties(
     src/foundation/ColorUtil.qml
     src/foundation/MasonryUtil.qml
     src/foundation/CornerUtil.qml
+    src/foundation/TextMetricsUtil.qml
 
     # QSkin.Contracts
     src/contracts/Slots.qml
@@ -195,6 +196,7 @@ qt_add_qml_module(qdsfoundation
         src/foundation/ColorUtil.qml
         src/foundation/MasonryUtil.qml
         src/foundation/CornerUtil.qml
+        src/foundation/TextMetricsUtil.qml
 
         # 窗口与布局容器
         src/foundation/QSkinWindow.qml

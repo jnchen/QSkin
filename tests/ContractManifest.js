@@ -12,10 +12,10 @@
  * 逐个 `Qt.createQmlObject` 实例化这里列的每一个类型，证明宿主真的能用。
  *
  * ⚠ 清单以 **qmldir** 为事实源，不是以文件名为事实源 —— 理由见生成器头。
- *   当前：普通类型 105 个，单例 17 个。
+ *   当前：普通类型 105 个，单例 18 个。
  ****************************************************************************/
 
-/* QSkin.Foundation —— 11 个普通类型 + 12 个单例 */
+/* QSkin.Foundation —— 11 个普通类型 + 13 个单例 */
 var foundationTypes = [
     "QSkinWindow",
     "QSkinRow",
@@ -38,6 +38,7 @@ var foundationSingles = [
     "OverlayStack",
     "QRCodeEncoder",
     "ScrollUtil",
+    "TextMetricsUtil",
     "FuzzyMatch",
     "ColorUtil",
     "MasonryUtil",
@@ -401,6 +402,7 @@ var allSinglePairs = [
     { uri: "QSkin.Foundation", name: "OverlayStack" },
     { uri: "QSkin.Foundation", name: "QRCodeEncoder" },
     { uri: "QSkin.Foundation", name: "ScrollUtil" },
+    { uri: "QSkin.Foundation", name: "TextMetricsUtil" },
     { uri: "QSkin.Foundation", name: "FuzzyMatch" },
     { uri: "QSkin.Foundation", name: "ColorUtil" },
     { uri: "QSkin.Foundation", name: "MasonryUtil" },
@@ -416,4 +418,4 @@ var allSinglePairs = [
 var typeCount = 105;
 var publicTypeCount = 103;
 var internalTypeCount = 2;
-var singleCount = 17;
+var singleCount = 18;

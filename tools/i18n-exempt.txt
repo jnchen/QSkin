@@ -20,7 +20,7 @@
 #
 # 当前计数（每修一批就更新这一段 —— **数字一律实测复算，不要抄上面的**）：
 #   M33-6（DateUtil 格式本地化）之后：
-#     A=0  B=0  Bp=0  C=0  D=7   合计 7 条
+#     A=0  B=0  Bp=0  C=0  D=8   合计 8 条
 #
 #     · **A / B / Bp 三类全清零** —— §8.6 判据 ② 成立（本批完成）。
 #       A 2 + B 2 的落点其实是 **3 处语句 / 4 行账目**：`weekdayLabels`（1 行）
@@ -28,6 +28,14 @@
 #       `formatTime` 的 A token（1 行）提成 `amPmLabels` 属性（2 条）。
 #     · `DateUtil.qml` 另有 3 条**解析方向**的字面量留在 D 区 —— 它们是
 #       `parseTime` 的**接受集**，不是展示文案，不 i18n（见该函数注释）。
+#     · `TextMetricsUtil.qml` 的 `probe.text = "中A"` 也是 D —— 那是**量自然行高
+#       用的探针串**，永不上屏（宿主 `visible: false`、`width/height` 均 0）。
+#       它必须含 CJK：拉丁字母的 ascent/descent 低一档（实测 16.00 vs 21.28），
+#       量出的行盒高度会偏小、与引擎不符。
+#     · `TextMetricsUtil.qml` 的 `probe.text = "中A"` 也是 D —— 那是**量自然行高
+#       用的探针串**，永不上屏（宿主 `visible: false`、`width/height` 均 0）。
+#       它必须含 CJK：拉丁字母的 ascent/descent 低一档（实测 16.00 vs 21.28），
+#       量出的行盒高度会偏小、与引擎不符。
 #
 #   （留档）M33-5 之后：A=2  B=2  Bp=0  C=0  D=7   合计 11 条
 #     · C 清零：`QRCodeEncoder.encode()` 只返回 `code` + `params`（另有 ASCII
@@ -50,5 +58,6 @@ D	src/contracts/Slots.qml	console.warn("QSkin.Slots.install(): 未知插槽名 '
 D	src/foundation/DateUtil.qml	.replace("A", function() { map.push("A"); return "(上午|下午|AM|PM)" })
 D	src/foundation/DateUtil.qml	if (!hasA && /上午|下午|AM|PM/.test(String(str)))
 D	src/foundation/DateUtil.qml	pm = (raw === "下午" || raw === "PM")
+D	src/foundation/TextMetricsUtil.qml	probe.text = "中A"
 D	src/foundation/FuzzyMatch.js	if (!r) return "score=null (不匹配)\n" + t
 D	src/foundation/FuzzyMatch.js	var SEPARATORS = " \t\n\r-_/\\.:,;|·、，。：；！？（）()[]{}<>#@+*&=%$^~`\"'"

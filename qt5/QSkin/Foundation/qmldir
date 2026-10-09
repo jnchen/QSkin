@@ -37,6 +37,7 @@ singleton QRCodeEncoder 1.0 QRCodeEncoder.qml
 # 一个 2^n 种对齐里选最优的组合问题，值 node 能跑同一份源码、用穷举交叉验证。
 # 完整论证见两份文件头，以及 COVERAGE.md 第七节的「M25 五项裁决」。
 singleton ScrollUtil 1.0 ScrollUtil.qml
+singleton TextMetricsUtil 1.0 TextMetricsUtil.qml
 
 # 模糊匹配打分（M25）。一份实现、两个消费者：
 #   · QML 侧 —— QSkinCommand 用它算分数与命中下标（高亮）
