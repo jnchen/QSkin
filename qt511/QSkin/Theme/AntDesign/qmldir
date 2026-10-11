@@ -1,0 +1,3 @@
+module QSkin.Theme.AntDesign
+
+singleton AntDesign 1.0 AntDesign.qml

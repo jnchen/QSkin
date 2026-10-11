@@ -4,10 +4,11 @@
 > 借鉴 Web 端已经被验证过的布局与令牌思想，让用代码写出来的 UI 默认就不难看；
 > 再在此之上，用一层样式契约承载 TDesign / Ant Design / Arco Design / shadcn 的 Qt 实现。
 
-> **一句话**：生态里那些项目都是**一套设计语言**；QSkin 是**四套**
-> （× 明暗 = 8 套），**纯 QML 源码不用编译**，并且在 **Qt 6.8+ 与 Qt 5.15** 上
-> **各自实测跑通** —— 含 PyQt5 / PySide6 / C++ 五个宿主，
+> **一句话**：生态里那些项目都是**一套设计语言**；QSkin是**四套**
+> （× 明暗 = 8 套），**纯 QML 源码不用编译**，并且在 **Qt 6.8+ / Qt 5.15 / Qt 5.11**
+> 上**各自实测跑通** —— 含 PyQt5 / PySide6 / C++ 五个宿主，
 > **信创机器（龙芯 / 麒麟）**上是能跑的那一个。
+> Qt 5.11 档专为 **openEuler 20.03 LTS**（系统 Qt 就是 5.11.1）而做。
 
 ---
 
@@ -43,6 +44,7 @@
 | 设计语言 | Ant Design **1 套** | Fluent **1 套** | **4 套**（TDesign / Ant Design / Arco / shadcn）× 明暗 = 8 套 |
 | 接入成本 | C++ 编译 + 链接 | `pip install RinUI` | **纯 QML 源码，把 `src/` 挂进 import 路径即可** |
 | Qt 5.15 | ❌ 需 ≥ 6.7 | ❌ 需 PySide6 | ✅ **实测通过**（PyQt5 5.15.2 + C++ Qt 5） |
+| Qt 5.11（openEuler 20.03） | ❌ 需 ≥ 6.7 | ❌ 需 PySide6 | ✅ **实测通过**（`qt511/` 在真实 Qt 5.11.1 上全部对外控件可实例化 + 27 页抓图） |
 | 信创（龙芯 / 麒麟） | 未声明 | ❌ 无 loongarch wheel | ✅ **PyQt5 sdist 可装**（龙芯有 pypi 镜像） |
 | 宿主 | QML + C++ | **仅 PySide6** | **5 个**：QML / C++ / PySide6 / PyQt5 / C++ Qt5 |
 | 能力承诺怎么来的 | 文档 | 文档 | **5 宿主跑同一场景对账 + 逐像素核验**（`tools/test.sh`） |
@@ -306,8 +308,43 @@ app.exec_()
 ```bash
 python tools/check-host-parity.py          # 四个宿主：qml / C++ / PySide6 / PyQt5
 python tools/falsify-host-parity.py        # 证伪：确认上面那道门真的会红
-python tools/qml-downgrade.py --profile qt515   # 生成 Qt 5 侧的源码树 qt5/
+python tools/qml-downgrade.py --profile qt515   # 生成 Qt 5.15 侧源码树 qt5/
+python tools/qml-downgrade.py --profile qt511 --also-examples   # 生成 Qt 5.11 侧 qt511/
 ```
+
+### Qt 5.11 档（openEuler 20.03 LTS）
+
+```bash
+# 生成（--also-examples 才会把示例页也降级；抓图验证需要它们）
+python tools/qml-downgrade.py --profile qt511 --also-examples
+
+# 三层门，任何一层红都算Qt 5.11 不成立
+python tools/check-residue.py qt511                # ① 产物无 Qt 6 写法残留（代码掩码口径）
+python tools/check-qt511-contracts.py qt511    # ② 真实 5.11.1 引擎逐个实例化 qmldir 里的对外控件
+python tools/falsify-qt511-gate.py                # ③ 证伪：注入 5 类缺陷，门必须变红
+
+# 真实页面抓图（27 页；库与示例要同一个 --lib根）
+QSkin_QT=/path/to/Qt/5.11.1/msvc2017_64 \
+python tools/grab-pages.py --lib qt511 --out .cache/qt511_pages
+```
+
+**Qt 5.11 的实测边界**（逐条在真实 5.11.1 上验过，写下来免得下次再撞）：
+
+| 项 | 结论 |
+|---|---|
+| `QtQuick` | ≤ **2.11**（2.12 起崩） |
+| `QtQuick.Controls` | ≤ **2.4**（2.5+ 崩：`module … version 2.11 is not installed`） |
+| `QtQuick.Window` / `Layouts` | 2.11 / 1.11 可用 |
+| `QtGraphicalEffects` | **1.0**（1.1+ 崩） |
+| `QtQuick.Shapes` | **可用** —— Shape / ShapePath / PathLine / PathAngleArc / PathSvg 全通过；只有 `preferredRendererType` 不支持 |
+| `required property` | 不支持 → 降级为普通 property（61 处） |
+| Pointer Handlers | 不支持 → MouseArea（Hover / Tap / Wheel 共 6 处） |
+| `Gradient.orientation` | 不支持（5.11 只有纵向） |
+| Popup/Dialog 的 anchors | 不支持（浮层不是 Item）→ 手动 x/y 居中 |
+| JS 保留字 `as` | 引擎拒绝 → 改名 `aS` |
+
+> **最大的一块工程量没有发生**：Shapes 在 5.11 上可用，所以 162 处
+> `ShapePath` **不需要**为 5.11 另写一套 Canvas 实现。
 
 **PySide6 与 PyQt5 是同一道门里的两个宿主**，不是两次手工验证 —— PyQt5
 缺失（解释器里没装）会报**工装错误 8**，不静默跳过。两条线的数字必须同口径，
@@ -328,6 +365,7 @@ python tools/check-host-parity.py
 | `src/` | PySide6 | 6.11.2 | 同上，且与 qml 逐像素一致 |
 | `qt5/` | PyQt5 | 5.15.2（wheel 自带） | 105/105 · 103/103 · 18/18 |
 | `qt5/` | C++（Qt 5，MinGW） | 5.15.2 | 105/105 · 103/103 · 18/18 |
+| `qt511/` | `qml` 运行器 | **5.11.1** | 全部对外控件可实例化 · 27 页抓图（见上节三层门） |
 
 > **PyQt5 为什么不参与像素对账**：Qt 5 与 Qt 6 的渲染（抗锯齿、Shape 光栅化）
 > 本就不可能逐像素相同，把它算进来只会得到一个永远红的假判据。它参与的是

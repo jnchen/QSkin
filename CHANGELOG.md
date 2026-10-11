@@ -13,6 +13,49 @@
 
 ---
 
+## 未发布
+
+### Qt 5.11 档：openEuler 20.03 LTS（Qt 5.11.1）
+
+`src/` 仍是唯一事实源。新增第三轨源码树 `qt511/`，由
+`python tools/qml-downgrade.py --profile qt511 --also-examples` 生成。
+
+**为什么加这一档**：openEuler 20.03 LTS 的系统 Qt 就是 **5.11.1**（22.03 才是
+5.15.2）—— 上一版把 `qt511` 档删掉的理由是「没有真实目标机」，现在有了。
+本轮装了真实 Qt 5.11.1（aqt + `qml.exe`/`qmlscene.exe`），**每一项结论都在真引擎上验过**。
+
+**实测边界**（推翻了几处凭印象的判断）：
+
+| 项 | 结论 |
+|---|---|
+| `QtQuick.Shapes` | **可用**（Shape/ShapePath/PathLine/PathAngleArc/PathSvg/dashPattern全通过），只有 `preferredRendererType` 不支持 ⇒ **162 处路径无需重写** |
+| `QtQuick.Controls` | 上界 **2.4**（2.5+ 崩），不是直觉上的 2.11 |
+| `QtQuick` / `Window` / `Layouts` | 2.11 / 2.11 / 1.11 |
+| `QtGraphicalEffects` | **1.0** |
+| `required property` | 不支持 → 普通 property（61 处） |
+| Pointer Handlers | 不支持 → MouseArea（6 块） |
+| `Gradient.orientation` | 不支持（5.11 只有纵向） |
+| Popup/Dialog 的 `anchors` | 不支持（浮层不是 Item）→ 手动 x/y 居中（8 处） |
+| JS 保留字 `as` | 引擎拒绝 → 改名（1 处声明 + 2 处引用） |
+
+**三层门**（任何一层红都不算支持）：
+
+1. `tools/check-residue.py qt511` —— 产物无 Qt 6 写法残留（**代码掩码口径**，
+   grep 会把注释里的说明文字数进去）
+2. `tools/check-qt511-contracts.py qt511` —— 真实 5.11.1 引擎**逐个实例化**
+   qmldir 里的全部对外控件
+3. `tools/falsify-qt511-gate.py` —— **变异证伪**：注入 5 类真会炸的缺陷，
+   要求门禁全部变红（实测 5/5 抓到 ⇒ 门不是假绿）
+
+另有 `tools/grab-pages.py --lib qt511 --out …` 在真实 5.11.1 上抓 27 个真实页面；
+`tools/emit-qt511-verify.py` 把内存里的降级结果写到 `.cache/`（不碰入库产物，
+因为生成模式会先删整个产物目录，在门禁里跑会被批量删除拦下）。
+
+**已知差异**（不隐藏）：横向渐变用「交换首尾 stop」实现，与 Qt 6 侧不是逐像素一致；
+四角圆角的补角矩形会盖掉一小段 border；Qt 5.11 用自带字体度量，字宽与 Qt 6 略有差异。
+
+---
+
 ## 0.0.1 - 2026-10-01
 
 ### Qt 5 双轨：PyQt5 / PySide6 / C++ 三条线（本轮新增）

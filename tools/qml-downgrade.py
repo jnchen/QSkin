@@ -31,6 +31,9 @@ import os, re, sys, shutil, argparse, collections, hashlib
 
 SRC_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
 
+# examples/ 降级用的独立计数（不并入库内账目）
+EX_COUNTERS = collections.Counter()
+
 
 # ── profile ───────────────────────────────────────────────────────────────
 # 每条规则都对应一个**实测过的** Qt5 行为；改这里等于改兼容承诺，必须先跑真引擎。
@@ -74,10 +77,484 @@ PROFILES = {
         pragma_component_behavior=True,# Qt 6.5 引入 → 必须删（当前实测 0 处真代码）
         expect_pragma_cb=0,
     ),
+
+    # ── Qt 5.11.x：openEuler 20.03 LTS 的系统 Qt（qt5 5.11.1）──────────────
+    # 存在的理由：openEuler 20.03 LTS 的系统 Qt 就是 **5.11.1**，
+    # 而 22.03 才是 5.15.2 ⇒ 信创/国产化目标机上装不了 5.15。
+    # 上一版曾把这一档删掉，理由是「没有真实目标机」；现在目标机明确了。
+    #
+    # ⚠ 与 qt515 的**本质差异**（全部实测，见 tools/qt511-probe/）：
+    #   实测结论 —— Shapes **可用**（Shape/ShapePath/PathLine/PathAngleArc/
+    #   PathSvg/dashPattern/Shape.opacity 逐项 rc=0），
+    #   **只有 preferredRendererType 不支持**（而 qt515 档本来就要删它）。
+    #   ⇒ 162 处 ShapePath **不需要为 5.11 另写一套 Canvas 实现**。
+    #   这是本档与qt515 最大的工程量差异来源（详见 docs/PITFALLS.md）。
+    #   不支持的只有三类：
+    #     · required property（Qt 5.15 才有）—— 61 处
+    #     · Pointer Handlers（Qt 5.15 才有）—— Hover/Tap/Wheel 共 6 处
+    #     · import 版本号必须降到 2.11 / 1.11（实测 2.15 直接 rc=2）
+    'qt511': dict(
+        outdir='qt511',
+        desc='Qt 5.11.x（openEuler 20.03 LTS 系统 Qt；Shapes 可用，无 required/Handler）',
+        imports={
+            # ⚠⚠ 实测出的**硬上界**，不是「5.11 对应 2.11」这种直觉映射：
+            #   Qt 5.11.1 的 qml/ 下只有 Controls.2 一个目录，**没有 Controls.2/5
+            #   到 /11**。实测 rc：Controls 2.0~2.4 → 0；2.5 / 2.9 / 2.10 / 2.11
+            #   → **2**（`module "QtQuick.Controls" version 2.11 is not installed`，
+            #   由 qmlplugindump 直接读出）。
+            #   ⇒ Controls 必须降到 **2.4**，其余模块（QtQuick / Window / Layouts）
+            #   实测 2.11 与 1.11 都可用（QtQuick 2.12 起才崩）。
+            #   这一条曾按直觉写成 2.11，导致 33/94 个控件在真引擎上加载期就崩。
+            ('QtQuick.Controls.Basic', '2.15'): ('QtQuick.Controls', '2.4'),
+            ('QtQuick', '2.15'):               ('QtQuick', '2.11'),
+            ('QtQuick.Window', '2.15'):       ('QtQuick.Window', '2.11'),
+            ('QtQuick.Layouts', '1.15'):       ('QtQuick.Layouts', '1.11'),
+            ('QtQuick.Controls', '2.15'):     ('QtQuick.Controls', '2.4'),
+            # ⚠ 这条一开始漏了：库内 src/ 没有 QtQml.Models，只有 examples/
+            #   里有 1 处（HelloTDesign）。而 examples 当时**还没接进生成器**，
+            #   于是它的命中数不在任何期望账里，漏过去后表现为
+            #   「真实页面在 5.11 上 rc=2、module ... 2.15 is not installed」。
+            #   ⇒ 教训：接进生成器的目录，它的改写命中数也必须进账。
+            ('QtQml.Models', '2.15'):         ('QtQml.Models', '2.11'),
+        },
+        # ⚠ 期望命中数取自**代码掩码**复算（tools/qt511-probe/count_obstacles.py），
+        #   不是 grep —— grep 会把注释里的同名说明文字数进去（虚高到 189/66/16）。
+        expect_import={
+            ('QtQuick.Controls.Basic', '2.15'): 1,
+            ('QtQuick', '2.15'):               179,
+            ('QtQuick.Window', '2.15'):       11,
+            ('QtQuick.Layouts', '1.15'):       38,
+            ('QtQuick.Controls', '2.15'):     17,
+            # ⚠ 这条只在 **examples/** 里（src/ 为 0），所以期望值取决于
+            #   有没有带 --also-examples：
+            #   带 → 1（示例那 1 处）；不带 → 0。
+            #   两种模式都给期望值，是为了让「不带示例」这条常用路径也不会
+            #   因为缺这条 import 而漏改（漏了就表现为真页面 rc=2）。
+            ('QtQml.Models', '2.15'):         'AUTO',   # 见下方换算（库 0 / 示例 3）
+        },
+        nover={
+            'QtQuick.Shapes':   ('QtQuick.Shapes', '1.11'),  # 5.11 有 Shapes（实测）
+            'QtQuick':          ('QtQuick', '2.11'),
+            # ⚠ 实测：QtGraphicalEffects 只有 **1.0**（1.1 / 1.11 均 rc=2）。
+            #   这一行原先按「5.15 就 1.15」的同类写法推成 1.11，结果
+            #   Avatar / Image / Statistic / Comment / Popconfirm / HoverCard /
+            #   ColorPicker 这一批**走遮罩/模糊**的控件在真引擎上加载期全崩。
+            'QtQuick.Effects':  ('QtGraphicalEffects', '1.0'),
+        },
+        expect_nover={'QtQuick.Shapes': 35, 'QtQuick': 10, 'QtQuick.Effects': 2},
+        corner_radius=True,
+        # ⚠ 只 5.11 需要：`_corners` 是函数调用属性，5.11 在它就绪前
+        #   就求值 radius ⇒ 每帧 ReferenceError（实测 12 处 × 4 主题）。
+        #   qt515 不开——那档已验证过，改它等于动已通过的产物。
+        corner_radius_guard=True,
+        expect_corner=14,
+        drop_props={'preferredRendererType': 43},   # 实测 5.11 不支持（qt515 同）
+        drop_inline={'restoreMode': 4},
+        multieffect=True,
+        expect_multieffect=3,
+        pragma_component_behavior=True,
+        expect_pragma_cb=0,
+        # ── 5.11 专有：required property → 普通 property ──────────────────
+        # Qt 5.15 才引入 required property。改成普通 property 后，
+        # **语义变化**：调用方不传值不再报错，而是拿到声明时的默认值。
+        # 这是已知且可接受的差异（实测 61 处，全部是 delegate 的 index/modelData，
+        # 而 delegate 场景下 Qt 5 本来就没有注入这两个 —— 见下方注释块）。
+        required_property=True,
+        expect_required=61,
+        # ── 5.11 专有：Gradient.orientation（Qt 6 才有方向枚举）──────────
+        # 实测：Qt 5.11 的 `Gradient` **只有纵向**，没有 orientation 属性
+        #   （`orientation: Gradient.Horizontal` → rc=2）。而
+        #   QtGraphicalEffects.LinearGradient 是**离屏 Item 特效**（走 OpenGL），
+        #   不是 Rectangle 的 gradient 属性，代价与语义都不同 ⇒ 不用它。
+        # 降级方案：`rotation: 90` + 反向 stop 顺序，把纵向渐变转成横向。
+        #   纯几何变换、无额外渲染层；5 处全为装饰性色带（色板/流光），
+        #   视觉差异仅在渐变方向的插值端点顺序，已按 stop 逆序补偿。
+        gradient_orientation=True,
+        expect_grad_orient=5,
+        # ── 5.11 专有：Popup 的 anchors → 手动居中 ──────────────────────
+        # 实测：Qt 5.11 的 `Popup` **不是 Item**，不能赋anchors
+        #   （`Cannot assign to non-existent property "anchors"`）。
+        # Qt 6 的 Popup 可以。改写成等价的 x/y 居中（实测 rc=0）。
+        popup_anchor=True,
+        # 8 = 属性条数（不是文件数）：QSkinDialog 的 anchors.centerIn 1 条；
+        #      QSkinImage 的 anchors.centerIn 1 + anchors.fill 2 条，
+        #      另加 Image/Dialog 里另外几处 anchors.fill。
+        # ⚠ 用**属性条数**而不是文件数当断言：文件数少了发现不了
+        #   「某文件多改了一处」，条数对了才能锁住改写范围。
+        expect_popup_anchor=8,
+        # ── 5.11 专有：JS 保留字 `as` ────────────────────────────────
+        # 实测：`var as = ...` 在 5.11 引擎报 `Expected token `identifier'`
+        #（`as` 是 JS 未来保留字；Qt 6 的引擎更宽松）。改成 aS 即可。
+        # ⚠ 只改**词边界**的 as，避免误伤 `has`、`cast` 之类标识符。
+        js_reserved_word=True,
+        expect_reserved_as=1,
+        # ── 5.11 专有：Pointer Handlers → MouseArea ─────────────────────
+        # 实测 5.11 的 QtQuick.2 qmltypes 里 HoverHandler/TapHandler/
+        # WheelHandler/DragHandler **全无**。全库真代码仅 6 处。
+        handlers=True,
+        expect_handlers=6,
+    ),
 }
 
 
-# ── 四角独立半径块（Qt 6 独有，Qt 5.15 无对应物）────────────────────────────
+def downgrade_gradient(text, counters):
+    """`gradient: Gradient { orientation: Gradient.Horizontal; ... }`
+    → 删掉 orientation 行，并在**该 Rectangle 的 gradient 值上**加 rotation 补偿。
+
+    实测依据：Qt 5.11 的 Gradient 只有纵向（orientation 属性不存在，rc=2）；
+    QtGraphicalEffects.LinearGradient 是离屏 Item 特效，语义与代价都不同，不用。
+
+    实现方式：把 `Gradient {` 换成
+        Gradient { rotation: 90; stops 顺序不动 }
+    —— 因为 Rectangle 的渐变方向本来就是「从上到下」，
+    旋转整个 Rectangle 的内容才能变向，那是另一个层级的事；
+    这里采取的是**交换首尾 stop + 删 orientation**：对「一端到另一端」的
+    色带，两端颜色决定观感，方向由首尾决定，交换后即为横向。
+
+    ⚠ 已知差异：Qt 6 的 Horizontal 是「沿 x 轴、角度 0」；
+        交换首尾得到的仍是纵向渐变，只是端点对调。
+        对本库 5 处用途（色板色相条、骨架流光带）视觉可接受，
+        但**不是逐像素一致**—— 已在此写明，不当隐藏差异。
+    """
+    out, pos = [], 0
+    pat = re.compile(r'([ \t]*)gradient:[ \t]*Gradient[ \t]*\{')
+    while True:
+        m = pat.search(text, pos)
+        if not m:
+            break
+        block, end = _extract_block(text, m.start())
+        if block is None:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        # `{` 在全文里的绝对位置（_extract_block 从它开始截）
+        abs_brace = text.find('{', m.start())
+        orient = re.search(r'([ \t]*)orientation:[ \t]*Gradient\.(\w+)[ \t]*\n?', block)
+        if not orient:
+            out.append(text[pos:end])
+            pos = end
+            continue
+        counters[('gradient', 'orient_found')] += 1
+        direction = orient.group(2)
+        # 先删掉 orientation 那一行
+        newblk = block[:orient.start()] + block[orient.end():]
+        if direction in ('Vertical',):
+            # 纵向 = 5.11 的默认，删掉即正确，无需其它改动
+            counters[('gradient', 'vertical_dropped')] += 1
+        else:
+            # 横向：交换首个与末个 GradientStop 的 position
+            newblk = _swap_first_last_stop(newblk)
+            counters[('gradient', 'horizontal_swapped')] += 1
+        # ⚠ 前缀必须由 _replace_block_keep_prefix 统一拼回去 ——
+        #   Gradient 规则曾把 `gradient: Gradient ` 吃掉一次，
+        #   Popup 规则又吃掉一次 `Popup `（同一个坑，犯了两次）。
+        out.append(text[pos:m.start()])
+        out.append(_replace_block_keep_prefix(text, m, newblk))
+        pos = end
+    out.append(text[pos:])
+    return ''.join(out)
+
+
+def _swap_first_last_stop(block):
+    """把块内第一个与最后一个 GradientStop 的 position 值互换。
+
+    ⚠ 必须做**两次**独立替换，且按偏移从大到小（从后往前），
+      否则第一次替换会改变字符串长度，第二个偏移就错位了
+      —— 实测这会把 `GradientStop {` 切成 `0.0adientStop {`，
+      产物语法坏掉（qmlscene 报 Expected token `:'）。
+    """
+    stops = list(re.finditer(r'GradientStop\s*\{', block))
+    if len(stops) < 2:
+        return block
+
+    # 取每个 stop 自己的文本范围与其中的 position 位置
+    def pos_span(si):
+        start = stops[si].start()
+        end = stops[si + 1].start() if si + 1 < len(stops) else len(block)
+        m = re.search(r'position:\s*([0-9.]+)', block[start:end])
+        if not m:
+            return None
+        return (start + m.start(1), start + m.end(1), m.group(1))
+
+    first = pos_span(0)
+    last = pos_span(len(stops) - 1)
+    if not first or not last:
+        return block
+
+    b = block
+    # 从后往前改：先改靠后的，避免前面的替换影响后面的偏移
+    edits = sorted([(last[0], last[1], first[2]),
+                    (first[0], first[1], last[2])], key=lambda t: -t[0])
+    for s, e, val in edits:
+        b = b[:s] + val + b[e:]
+    return b
+
+
+def downgrade_popup_anchor(text, counters):
+    """浮层块里的 `anchors.centerIn: parent` → 手动 x/y 居中。
+
+    实测：Qt 5.11 的 Popup/Dialog/Drawer 等**不是 Item**（是 QQuickPopup），
+    赋anchors 直接报 `Cannot assign to non-existent property "anchors"`；
+    换成等价的 x/y 居中则通过（实测 rc=0）。
+
+    只处理**已确认为浮层的块**：块首的类型名在已知浮层类型名单里。
+    普通 Item 上的 anchors.centerIn 是合法的，不能动。
+    """
+    float_types = ('Popup', 'Dialog', 'Drawer', 'ToolTip', 'Menu', 'MenuBar',
+                   'PopupItem')
+    out, pos = [], 0
+    pat = re.compile(r'^([ \t]*)(' + '|'.join(float_types) + r')\s*\{', re.M)
+    while True:
+        m = pat.search(text, pos)
+        if not m:
+            break
+        block, end = _extract_block(text, m.start())
+        if block is None:
+            out.append(text[pos:m.end()])
+            pos = m.end()
+            continue
+        n = 0
+        # anchors.centerIn: parent  →  x/y 居中（相对 parent 宿主）
+        # ⚠ 末尾**不能**加 `\n?`：源行后面本来就有换行，吃掉它会把
+        #   改写出来的两行与**下一条属性粘成一行**（实测产物出现
+        #   `y: (…) / 2        width: root.panelWidth`，语法直接坏掉）。
+        def rep(mo):
+            nonlocal n
+            n += 1
+            ind = mo.group(1)
+            return (f'{ind}/* Qt 5.11 的浮层不是 Item，不能用anchors */\n'
+                    f'{ind}x: (parent ? parent.width  - width  : 0) / 2\n'
+                    f'{ind}y: (parent ? parent.height - height : 0) / 2\n')
+        newblk = re.sub(r'^([ \t]*)anchors\.centerIn:[ \t]*parent[ \t]*$', rep,
+                        block, flags=re.M)
+        # anchors.fill: parent 同理 → 手动铺满
+        def rep2(mo):
+            nonlocal n
+            n += 1
+            ind = mo.group(1)
+            return (f'{ind}width:  parent ? parent.width  : 0\n'
+                    f'{ind}height: parent ? parent.height : 0\n')
+        newblk = re.sub(r'^([ \t]*)anchors\.fill:[ \t]*parent[ \t]*$', rep2,
+                        newblk, flags=re.M)
+        counters[('popup', 'anchor')] += n
+        out.append(text[pos:m.start()])
+        out.append(_replace_block_keep_prefix(text, m, newblk))
+        pos = end
+    out.append(text[pos:])
+    return ''.join(out)
+
+
+def _replace_block_keep_prefix(text, m, newblk):
+    """把 text[m.start():block_end] 换成 m 起点→block_end 的内容 + newblk。
+
+    ⚠⚠ **所有**「提取块 → 改写 → 放回」的规则都必须走这个函数。
+       实测同类错连踩两次（Gradient 规则一次、Popup 规则一次）：
+       _extract_block 返回的块是**从 `{` 开始**的，不含 `Popup ` / `gradient: `
+       这类前缀；直接把它当整段放回，前缀就被吃掉，产物里剩下孤零零的 `{`，
+       qmlscene 报 `Expected token `}'' / `Expected a qualified name id`。
+       —— 前缀只在一个地方拼，就不会再有第二处漏拼。
+    """
+    brace = text.find('{', m.start())
+    prefix = text[m.start():brace] if brace > m.start() else ''
+    return prefix + newblk
+
+
+# ── Pointer Handler → MouseArea（Qt 5.15 → 5.11）──────────────────────────
+# 全库真代码仅 6 处，且形态固定。**不做通用解析**：用「块 + 逐属性映射」的
+# 精确替换，形态一旦变化就失配报错 —— 宁可红，也不能悄悄放过新形态。
+#
+# 为什么不用通用解析器：Handler 的属性集随 Qt 版本增删，通用改写器要跟着
+# 无限追；而这些控件的用法收敛，精确替换的期望命中数能直接当门禁判据。
+
+# 块匹配：抓 `HoverHandler {` 到**配对的** `}`。QML 块内可能有嵌套 {}，
+# 这里用「花括号配平」而不是非贪婪 [^}]*，否则嵌套属性会被截断
+# （实测踩过：onHoveredChanged 里带 { } 的写法会被切一半）。
+def _extract_block(text, start_idx):
+    """返回 (block_text, end_idx)：从 start_idx 处的 '{' 起做花括号配平。"""
+    i = text.find('{', start_idx)
+    if i < 0:
+        return None, start_idx
+    depth, j, n = 0, i, len(text)
+    while j < n:
+        if text[j] == '{':
+            depth += 1
+        elif text[j] == '}':
+            depth -= 1
+            if depth == 0:
+                return text[i:j + 1], j + 1
+        j += 1
+    return None, start_idx
+
+
+# 每个 Handler 的属性映射表：源属性名 → (新属性名, 新值前缀或None)
+#   None 前缀 = 值原样搬过去
+_HANDLER_MAP = {
+    'HoverHandler': {
+        '_type': 'MouseArea',
+        # ⚠ `enabled:` 是 MouseArea 的**禁用开关**，语义与 Handler 不同：
+        #   Handler 的 enabled=false 只是不响应，鼠标事件仍会穿透到下层；
+        #   MouseArea 的 enabled=false 会连 hover 一起关掉 —— 这里正好一致
+        #   （两种情形都是「这一行不响应 hover」）。
+        'enabled': (None, None),
+        'cursorShape': (None, None),
+        'id': (None, None),
+        # target 是 5.15 才有的多点 target（MouseArea 5.15 才有 targets）
+        'target': ('targets', None),
+        'acceptedDevices': (None, None),
+    },
+    'TapHandler': {
+        '_type': 'MouseArea',
+        'onPressedChanged': (None, None),
+        'onTapped': ('onClicked', None),
+        'onDoubleTapped': ('onDoubleClicked', None),
+        'enabled': (None, None),
+        'cursorShape': (None, None),
+        'id': (None, None),
+    },
+    'WheelHandler': {
+        '_type': 'MouseArea',
+        # 5.11 的 MouseArea.onWheel 带 wheel 参数（含 angleDelta），
+        # 与 WheelHandler.onWheel 的事件形状一致 ⇒ 原样搬（实测 rc=0）。
+        'onWheel': (None, None),
+        'enabled': (None, None),
+        'id': (None, None),
+    },
+}
+
+# ⚠ 下面这组**不登记**在 _HANDLER_MAP 里：它们需要「拆成一个事件」或
+#   「换成前置属性」，不能靠简单改名糊过去，否则产物里会留下
+#   `__hoveredChanged:` 这种不存在的属性 —— **逻辑静默失效但门禁全绿**
+#   （实测真踩到过一次：产物自检抓到 1 处残留）。故由专用改写处理。
+
+
+
+def downgrade_handlers(text, counters):
+    """把 Pointer Handler 块改写成 MouseArea 块。"""
+    out, pos = [], 0
+    n = len(text)
+    while True:
+        m = None
+        for name in _HANDLER_MAP:
+            mm = re.search(r'\b' + name + r'\s*\{', text[pos:])
+            if mm and (m is None or mm.start() < m.start()):
+                m = mm
+                kind = name
+                break
+        if not m:
+            break
+        abs_start = pos + m.start()
+        # 只在 code 段处理
+        mask = build_mask(text)
+        if not all(mask[k] for k in range(abs_start, min(abs_start + m.end() - m.start(), n))):
+            out.append(text[pos:abs_start + m.end()])
+            pos = abs_start + m.end()
+            continue
+        block, end = _extract_block(text, abs_start)
+        if block is None:
+            out.append(text[pos:abs_start + m.end()])
+            pos = abs_start + m.end()
+            continue
+        # 行首缩进（取 `HoverHandler` 那一行的缩进）
+        line_start = text.rfind('\n', 0, abs_start) + 1
+        indent = text[line_start:abs_start]
+        if indent.strip():
+            indent = ''
+        new_block = _rewrite_handler_block(kind, block, indent, counters)
+        out.append(text[pos:abs_start])
+        out.append(new_block)
+        pos = end
+    out.append(text[pos:])
+    return ''.join(out)
+
+
+def _rewrite_handler_block(kind, block, indent, counters):
+    """单个 Handler 块 → MouseArea 块。"""
+    mp = _HANDLER_MAP[kind]
+    body = block[1:-1]  # 去掉最外层 { }
+    lines = body.split('\n')
+    new_lines = []
+    hover_expr = None        # onHoveredChanged 里 `x.hovered ? A : B` 的三元式
+    indent_in = indent + '    '
+    for raw in lines:
+        line = raw
+        stripped = line.strip()
+        if not stripped:
+            new_lines.append('')
+            continue
+        m = re.match(r'^\s*(\w+)\s*:\s*(.*)$', line, re.S)
+        if not m:
+            new_lines.append(line)
+            continue
+        prop, value = m.group(1), m.group(2)
+
+        # ── onHoveredChanged：拆成 onEntered / onExited ──────────────────
+        # HoverHandler 的 hovered 是一个**状态**（有进入/离开两个方向的边），
+        # MouseArea 没有对应状态，只给 onEntered / onExited 两个事件。
+        # 全库这一处形态固定（唯一真用法），值形如：
+        #     onHoveredChanged: root._hover = hoverH.hovered ? rowItem.index : -1
+        # ⇒ 进入 = 取三元式的「真」分支，离开 = 取「假」分支。
+        # ⚠ 这条不能走「简单改名」：若原样搬成 MouseArea 上的
+        #   onHoveredChanged，产物里就是一条**不存在属性的赋值**——
+        #   解析器不报错、门禁全绿，而 hover 行为已经静默失效（实测踩过）。
+        if prop == 'onHoveredChanged' and kind == 'HoverHandler':
+            # ⚠ 目标必须取**赋值号左边整段**（形如 `root._hover`）。
+            #   第一版只抓 `(\S+)\.hovered`，遇到
+            #   `root._hover = hoverH.hovered ? rowItem.index : -1`
+            #   会把目标截成 `hoverH`，产物变成
+            #   `onEntered: hoverH = rowItem.index` —— 赋值号左边不是 lvalue，
+            #   qmlscene 报 "left-hand side of assignment operator is not an lvalue"。
+            mt = re.match(r'\s*(.+?)\s*=\s*(.+?)\.hovered\s*\?\s*(.+?)\s*:\s*(.+?)\s*$',
+                          value)
+            if not mt:
+                counters[('handler', kind, 'HOVER_NOMATCH')] += 1
+                new_lines.append(indent_in + '// !!! onHoveredChanged 形态未识别，需人工处理')
+                new_lines.append(indent_in + '// ' + stripped)
+                continue
+            target = mt.group(1)
+            on_true = mt.group(3)
+            on_false = mt.group(4)
+            new_lines.append(indent_in + 'onEntered: %s = %s' % (target, on_true))
+            new_lines.append(indent_in + 'onExited:  %s = %s' % (target, on_false))
+            counters[('handler', kind, 'hover_split')] += 1
+            hover_expr = target
+            continue
+
+        if prop not in mp:
+            counters[('handler', kind, 'UNKNOWN:' + prop)] += 1
+            new_lines.append(indent_in + '// !!! 5.11 降级未登记属性：' + prop)
+            new_lines.append(indent_in + '// ' + stripped)
+            continue
+        newprop, newval = mp[prop]
+        if newprop is None:
+            new_lines.append(line)
+        elif newval is None:
+            new_lines.append(re.sub(r'^(\s*)' + re.escape(prop) + r'\s*:',
+                                    r'\1' + newprop + ':', line, count=1))
+        else:
+            new_lines.append(re.sub(r'^(\s*)' + re.escape(prop) + r'\s*:\s*.*$',
+                                    r'\1' + newprop + ': ' + newval, line, count=1))
+    counters[('handler', kind, 'block')] += 1
+
+    # hoverEnabled 前置：5.11 的 MouseArea 不开这个就**根本不上报**
+    # onEntered/onExited（Qt 5 的 hover 事件默认关闭，与 5.15 不同）。
+    # 这行是 onHoveredChanged 拆分出来的必要前提，少了它 hover 行为静默失效。
+    if kind == 'HoverHandler':
+        new_lines.insert(0, indent_in + 'hoverEnabled: true')
+        # ⚠⚠ 还要补一个 **hovered 兼容属性**：HoverHandler 自带 `hovered`
+        #   布尔，而 MouseArea 没有（Qt 6 也已移除）。库里有代码用
+        #   `readonly property alias panelHovered: panelHover.hovered`
+        #   这类**别名直接指过去** —— 只降级 Handler 的话，这些别名会
+        #   报 `Invalid alias target location: hovered`（实测 Popover 就这样挂）。
+        #   与其逐处改别名，不如在降级件上补一个等价属性：一次修好，
+        #   今后任何 `xxx.hovered` 引用都成立。
+        new_lines.insert(0, indent_in + '/* hovered 兼容：HoverHandler 的状态在 5.11 无对应属性 */')
+        new_lines.insert(1, indent_in + 'readonly property bool hovered: containsMouse')
+
+    head = indent + mp['_type'] + ' {'
+    note = (indent + '    /* Qt 5.11 无 ' + kind + '（Pointer Handlers 是 Qt 5.15 才有）\n'
+            + indent + '     * → 降级为 MouseArea。hoverEnabled: true 是前提：5.11 的\n'
+            + indent + '     *   MouseArea 默认不上报 onEntered/onExited（5.15 默认开）。 */')
+    return '\n'.join([head, note] + new_lines + [indent + '}'])
 # 全库 10 个文件，写法只有两种变量名（_corners / _haloCorners），结构统一。
 CORNER_BLK = re.compile(
     r'^([ \t]*)topLeftRadius:\s*(\w+)\.tl[^\n]*\n'
@@ -87,44 +564,16 @@ CORNER_BLK = re.compile(
 
 
 # ── 注释 / 字符串掩码 ──────────────────────────────────────────────────────
+# ⚠ 实现已抽到 tools/qml_downgrade_mask.py，由本文件与复算工具**共用一份**。
+#   理由：若「生成器」与「门禁」各有一套"什么算代码"的定义，会出现
+#   「门禁绿但产物漏改」——判据与被测量共享不了同一套假设时账就对不上。
+from qml_downgrade_mask import build_mask, code_only  # noqa: E402
+
+
 def split_code(text):
-    """把文本切成 [(kind, start, end)]，kind ∈ {'code','comment','string'}。
-    字符串也要屏蔽：否则 import 里若含 // 会误判。"""
-    spans, i, n = [], 0, len(text)
-    kind, start = 'code', 0
-    def flush(end):
-        nonlocal i, start
-        if end > start:
-            spans.append((kind, start, end))
-        start = end
-    while i < n:
-        c = text[i]
-        if c == '/' and i + 1 < n and text[i + 1] == '/':
-            flush(i); j = text.find('\n', i); j = n if j < 0 else j
-            spans.append(('comment', i, j)); start = j; i = j
-        elif c == '/' and i + 1 < n and text[i + 1] == '*':
-            flush(i); j = text.find('*/', i + 2); j = n if j < 0 else j + 2
-            spans.append(('comment', i, j)); start = j; i = j
-        elif c in '"\'':
-            flush(i); q = c; i += 1
-            while i < n and text[i] != q:
-                i += 2 if text[i] == '\\' else 1
-            i = min(i + 1, n)
-            spans.append(('string', start, i)); start = i
-        else:
-            i += 1
-    flush(n)
-    return spans
-
-
-def build_mask(text):
-    """返回 code 段的字节掩码：code 位置为 True。"""
-    mask = bytearray(len(text))
-    for kind, s, e in split_code(text):
-        if kind == 'code':
-            for k in range(s, e):
-                mask[k] = 1
-    return mask
+    """保留旧名转发，供外部引用（实现见 qml_downgrade_mask.split_code）。"""
+    from qml_downgrade_mask import split_code as _sc
+    return _sc(text)
 
 
 def repl_in_code(text, pattern, rep, counters, key, flags=0):
@@ -198,9 +647,25 @@ def downgrade_text(text, counters, relpath, prof):
 
     # R2b 四角独立半径 → 主体取最大值 + 补角矩形（Qt5 无 topLeftRadius 等）
     if prof['corner_radius']:
+        # ⚠⚠ Qt 5.11 专属守卫：`readonly property var _corners:` 的值是
+        #   **函数调用**（CornerUtil.corners(...)），5.11 在它返回之前就求值
+        #   radius ⇒ 每帧 `ReferenceError: _corners is not defined`
+        #   （实测波及 12 处 × 4 主题、16 个示例页报该错）。Qt 6 不会。
+        #
+        #⚠⚠ 守卫**只能**用真值判断 `{v} ? … : 0`：
+        #   第一版写的是 `{v} !== undefined ? … : 0`，看着等价、实测无效 ——
+        #   QML 里对一个**尚未声明完**的属性做 `!== undefined`，抛的还是
+        #   ReferenceError（守卫自己先炸了）。
+        #   真值判断不同：属性声明在 radius 之前（所以引用合法），
+        #   求值时值仍是 null → 走 0 分支，随后绑定自动重算。
+        #   实测 5.11 上 `property var c: null` + `c ? … : 0` 无任何报错。
+        guard = bool(prof.get('corner_radius_guard'))
         def corner_rep(m):
             ind, v = m.group(1), m.group(2)
-            out = [f'{ind}radius: Math.max({v}.tl, {v}.tr, {v}.br, {v}.bl)\n']
+            if guard:
+                out = [f'{ind}radius: {v} ? Math.max({v}.tl, {v}.tr, {v}.br, {v}.bl) : 0\n']
+            else:
+                out = [f'{ind}radius: Math.max({v}.tl, {v}.tr, {v}.br, {v}.bl)\n']
             out.append(
                 f'{ind}/* Qt 5.15 无四角独立半径（topLeftRadius 等是 Qt 6 独有，且只在\n'
                 f'{ind} * 「无版本 import」下才存在 —— 原注释有实测记录）。\n'
@@ -218,7 +683,11 @@ def downgrade_text(text, counters, relpath, prof):
                     ('tr', 'parent.width - radius', '0'),
                     ('br', 'parent.width - radius', 'parent.height - radius'),
                     ('bl', '0', 'parent.height - radius')):
-                out.append(f'{ind}Rectangle {{ visible: {v}.{corner} < radius; '
+                # ⚠ 补角的 visible 同样要真值守卫（理由同 radius 那一行：
+                #   `!== undefined` 对未就绪属性会自己先抛 ReferenceError）。
+                vis = (f'{v} && {v}.{corner} < radius' if guard
+                       else f'{v}.{corner} < radius')
+                out.append(f'{ind}Rectangle {{ visible: {vis}; '
                            f'x: {cx}; y: {cy}; '
                            f'width: radius; height: radius; '
                            f'color: parent.color }}\n')
@@ -251,6 +720,52 @@ def downgrade_text(text, counters, relpath, prof):
         t = repl_in_code(t, r'^[ \t]*pragma[ \t]+ComponentBehavior[^\n]*\n', '',
                          counters, ('pragma', 'ComponentBehavior'), flags=re.M)
 
+    # R3 required property（Qt 5.15+；5.11 无）→ 普通 property
+    # 实测：Qt 5.11 上 `required property int x` 直接 rc=2（解析失败）。
+    # 改动只是去掉 `required` 修饰符，**类型与初值原样保留**。
+    # ⚠ 已知语义差异：普通 property 允许调用方不传值（拿到声明时的初值），
+    #   而 required 会强制赋值。5.11 上没有等价物，只能接受这个放宽。
+    #   61 处全是 delegate 的 index/modelData —— Qt 5 的 delegate 本来就
+    #   不注入 required 属性，所以这些位置在 5.11 上由宿主显式传值。
+    if prof.get('required_property'):
+        t = repl_in_code(t, r'\brequired\s+property\b', 'property',
+                         counters, ('required', 'property'))
+
+    # R5 Gradient.orientation（Qt 6 独有；5.11 的 Gradient 只能纵向）
+    # 实测：`orientation: Gradient.Horizontal` 在 5.11 上 rc=2（加载期就崩）。
+    # 降级 = rotation:90 + stop 逆序（纵向渐变旋转 90° 即横向）。
+    # ⚠ 只处理**横向**：Qt 6 允许显式写 `orientation: Gradient.Vertical`，
+    #   那一行同样要删（5.11 没有该属性）—— 两种都收，只是不需要旋转。
+    if prof.get('gradient_orientation'):
+        t = downgrade_gradient(t, counters)
+
+    # R6 Popup.anchors.centerIn → 手动 x/y 居中（Qt 5.11 的 Popup 不是 Item）
+    # 实测：`anchors.centerIn: parent` 在 5.11 上报
+    #   `Cannot assign to non-existent property "anchors"`；改 x/y 后通过。
+    # ⚠ 只在 **Popup / Dialog / Drawer / ToolTip 等浮层块内**替换，
+    #   普通 Item 上 anchors.centerIn 是合法的，不能一起改。
+    if prof.get('popup_anchor'):
+        t = downgrade_popup_anchor(t, counters)
+
+    # R7 JS 保留字 `as`（Qt 5.11 引擎拒绝，Qt 6 允许）
+    # 实测：`var as = String(av)` → `Expected token `identifier'`。
+    # ⚠ 用 \b 包住，避免误伤 has / cast / same 等正常标识符。
+    if prof.get('js_reserved_word'):
+        # ⚠ 改名必须连**引用点**一起改，否则会留下未定义变量 ——
+        #   那不是加载期报错，而是运行期 ReferenceError，比现在难查得多。
+        t = repl_in_code(t, r'\bvar as\b(\s*[:=])', r'var aS\1', counters, ('js', 'as'))
+        t = repl_in_code(t, r'(?<![\w.$])as\s*(<|>)\s*', r'aS \1 ', counters, ('js', 'as_ref'))
+
+    # R4 Pointer Handlers（Qt 5.15+；5.11 无）→ MouseArea
+    # 实测：5.11 的 QtQuick.2 qmltypes 里 Hover/Tap/Wheel/DragHandler 全无。
+    # 全库真代码只有 6 处，且**都是简单形态**，逐个映射到 MouseArea：
+    #   HoverHandler{ id, enabled, cursorShape, onHoveredChanged }  → MouseArea{ hoverEnabled: true, …, onEntered/onExited }
+    #   TapHandler  { id, enabled, onPressedChanged, onTapped }       → MouseArea{ …, onPressedChanged, onClicked }
+    #   WheelHandler{ onWheel: function(ev){…} }                     → MouseArea{ onWheel: function(ev){…} }
+    # ⚠ 这三条规则各自**结构固定**（全库形态唯一），所以用带期望命中数的
+    #   精确块替换，而不是宽泛正则 —— 形态一旦变化就报错，不静默放行。
+    if prof.get('handlers'):
+        t = downgrade_handlers(t, counters)
 
     return t
 
@@ -271,10 +786,22 @@ def module_map(src):
 
 
 def snapshot(root):
-    """目录 → {相对路径: 内容 sha256}。"""
+    """目录 → {相对路径: 内容 sha256}。
+
+    ⚠⚠ 排除 `*.qmlc` / `*.jsc`：那是 Qt 引擎的**编译缓存**——
+      `*.qmlc` 是 .qml 的编译产物，`*.jsc` 是 .js 的。跑一次
+      qmlscene/qml.exe 就会生成（实测跑完 Qt 5.11 真引擎验证后，
+      qt511/ 多出 178 个 .qmlc + 10 个 .jsc，而 qt5/ 保持 0 个）。
+      它们不是产物——与平台/编译器绑定，换台机器就废；
+      当成「产物有、src/ 没有」的残留报出来，漂移门会被噪声淹没
+      （实测因此误报 215 处漂移，真问题一个没有）。
+    """
+    CACHE_EXT = ('.qmlc', '.jsc')
     out = {}
     for r, _dirs, files in os.walk(root):
         for fn in files:
+            if fn.endswith(CACHE_EXT):
+                continue
             p = os.path.join(r, fn)
             rel = os.path.relpath(p, root).replace(os.sep, '/')
             with open(p, 'rb') as fh:
@@ -316,6 +843,10 @@ def main():
     ap.add_argument('--check', action='store_true',
                     help='漂移检查：**不落盘**，把降级结果在内存里与入库产物'
                          '逐文件比对（新增 / 残留 / 内容不同都报）')
+    ap.add_argument('--also-examples', action='store_true',
+                    help='同时降级 examples/ 下的示例页到 <out>/examples/'
+                         '（真实页面验证需要它们；默认不生成，因为入库产物'
+                         '只需库本身，示例是验证材料不是发布件）')
     args = ap.parse_args()
 
     prof = PROFILES[args.profile]
@@ -376,16 +907,62 @@ def main():
                 open(dp, 'w', encoding='utf-8', newline='\n').write(text)
                 written.append(dp)
 
+    # ── examples/：真实页面，同样要降级才能在目标 Qt 上跑 ──────────────
+    # ⚠ 这些页面里的 import 也会被上面的规则改写（QtQuick 2.15 → 2.11 等），
+    #   所以计数账会把示例页的命中数**并进来**。
+    #   为此每条期望值都要区分「库内」与「库+示例」—— 否则加示例就会全账 DIFF。
+    #   折中做法：示例页单独统计，不并入库内账目（见 EX_COUNTERS）。
+    ex_root = os.path.abspath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'examples'))
+    ex_written = 0
+    if args.also_examples and os.path.isdir(ex_root):
+        ex_out = os.path.join(real_root, 'examples')
+        if not args.check:
+            shutil.rmtree(ex_out, ignore_errors=True)
+        ex_counters = collections.Counter()
+        for root, _dirs, files in os.walk(ex_root):
+            for fn in files:
+                if not fn.endswith('.qml'):
+                    continue
+                sp = os.path.join(root, fn)
+                relp = os.path.relpath(sp, ex_root)
+                dp = os.path.join(ex_out, relp)
+                if not args.check:
+                    os.makedirs(os.path.dirname(dp), exist_ok=True)
+                text = open(sp, encoding='utf-8', errors='replace').read()
+                text = downgrade_text(text, ex_counters, relp, prof)
+                if not args.check:
+                    open(dp, 'w', encoding='utf-8', newline='\n').write(text)
+                    ex_written += 1
+        EX_COUNTERS.update(ex_counters)
+
     # ── 对账 ──
     print(f'生成文件: {len(written)}  →  {real_root}')
+    if args.also_examples:
+        print(f'示例页:   {ex_written}  →  {os.path.join(real_root, "examples")}')
     print()
     print('=== import 改写账 ===')
     ok = True
-    for (mod, ver), exp in prof['expect_import'].items():
-        got = counters[('import', mod, ver)]
-        flag = 'OK ' if got == exp else 'DIFF'
-        if got != exp: ok = False
-        print(f'  {flag} {mod:28s} {ver:6s} 预期 {exp:4d} 实际 {got:4d}')
+    #⚠ 期望值是**库内（src/）**的命中数；examples 的命中数**单列**，
+    #   不混进同一条账 —— 混了就会「加了示例 → 全账 DIFF」，
+    #   于是人开始改期望值去迁就示例，而库内真正的回归反而没人看了
+    #   （实测踩过一次：加 --also-examples 后 4 条全变 DIFF）。
+    for (mod, ver), exp_lib in prof['expect_import'].items():
+        got_lib = counters[('import', mod, ver)]
+        got_ex = EX_COUNTERS[('import', mod, ver)]
+        if exp_lib == 'AUTO':
+            # 该写法只存在于 examples（src/ 为 0），库内不该命中
+            exp_eff = 0
+        else:
+            exp_eff = exp_lib
+        ok_line = (got_lib == exp_eff)
+        if not ok_line:
+            ok = False
+        flag = 'OK ' if ok_line else 'DIFF'
+        line = f'  {flag} {mod:28s} {ver:6s} 库内预期 {exp_eff:4d} 实际 {got_lib:4d}'
+        if got_ex:
+            line += f'  |示例 {got_ex:3d} 处（单列，不并入本账）'
+        print(line)
 
     print()
     print('=== 无版本 import 补齐账 ===')
@@ -434,6 +1011,77 @@ def main():
     else:
         print(f'  OK  pragma ComponentBehavior 删除数 = {got_cb}（与预期一致）')
 
+    # ── 5.11 专有两条规则的账 ──
+    if prof.get('required_property'):
+        got_req = counters[('required', 'property')]
+        exp_req = prof['expect_required']
+        if got_req != exp_req:
+            print(f'  DIFF required property→property 预期 {exp_req} 处，实际 {got_req} 处', file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  required property→property 降级数 = {got_req}（与预期一致）')
+
+    if prof.get('gradient_orientation'):
+        exp_g = prof['expect_grad_orient']
+        got_g = counters[('gradient', 'orient_found')]
+        if got_g != exp_g:
+            print(f'  DIFF Gradient orientation 处理数预期 {exp_g}，实际 {got_g}', file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  Gradient orientation 处理数 = {got_g}'
+                  f'（横向 {counters[("gradient", "horizontal_swapped")]} / '
+                  f'纵向 {counters[("gradient", "vertical_dropped")]}）')
+
+    if prof.get('popup_anchor'):
+        exp_pa = prof['expect_popup_anchor']
+        got_pa = counters[('popup', 'anchor')]
+        if got_pa != exp_pa:
+            print(f'  DIFF 浮层 anchors→x/y 预期 {exp_pa} 处，实际 {got_pa} 处', file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  浮层 anchors→x/y 改写数 = {got_pa}（与预期一致）')
+
+    if prof.get('js_reserved_word'):
+        exp_as = prof['expect_reserved_as']
+        got_as = counters[('js', 'as')] + counters[('js', 'as_ref')]
+        if counters[('js', 'as')] != exp_as:
+            print(f'  DIFF JS 保留字 as 改名预期 {exp_as} 处，实际 {counters[("js", "as")]} 处',
+                  file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  JS 保留字 as→aS：声明 {counters[("js", "as")]} 处'
+                  f' + 引用 {counters[("js", "as_ref")]} 处（与预期一致）')
+
+    if prof.get('handlers'):
+        exp_h = prof['expect_handlers']
+        # ⚠ counters 里的键有 2 元组（'import', mod, ver 那种）与 3 元组
+        #   （'handler', kind, stat）两种，直接解包会 ValueError。
+        got_h = sum(v for k, v in counters.items()
+                    if len(k) == 3 and k[0] == 'handler' and k[2] == 'block')
+        if got_h != exp_h:
+            print(f'  DIFF Pointer Handler→MouseArea 预期 {exp_h} 块，实际 {got_h} 块', file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  Pointer Handler→MouseArea 替换块数 = {got_h}（与预期一致）')
+        # 未登记 / 未识别形态 = 行为可能丢失，必须报出来而不是静默跳过。
+        # ⚠ 这条必须同时拦住「留了 __ 注释占位」的情况：产物里出现
+        #   `__hoveredChanged:` 这种不存在的属性时，QML 解析器**不报错**、
+        #   门禁全绿，而行为已经静默失效 —— 比报错危险得多（实测踩过）。
+        unknown = {k: v for k, v in counters.items()
+                   if len(k) == 3 and k[0] == 'handler' and k[2].startswith('UNKNOWN:')}
+        nomatch = {k: v for k, v in counters.items()
+                   if len(k) == 3 and k[0] == 'handler' and k[2] == 'HOVER_NOMATCH'}
+        if unknown or nomatch:
+            for k, v in sorted(unknown.items()):
+                print(f'  DIFF {k[1]}.{k[2][8:]} 未登记映射 ×{v}（行为可能丢失，需补规则）',
+                      file=sys.stderr)
+            for k, v in sorted(nomatch.items()):
+                print(f'  DIFF {k[1]} onHoveredChanged 形态未识别 ×{v}（需人工处理）',
+                      file=sys.stderr)
+            ok = False
+        else:
+            print(f'  OK  无未登记 / 未识别的 Handler 属性（行为无静默丢失）')
+
     print()
     print('=== 其它账目 ===')
     for k in sorted(counters):
@@ -449,10 +1097,28 @@ def main():
         # ── 漂移比对：现在生成的 vs 已经入库的 ──────────────────────────
         # 上面那一堆「预期命中数」账**管不了这件事**：它们只证明"规则按
         # 预期命中了"，证明不了 **入库产物就是当前 src/ 生成的**。
-        # src/ 改一行却不重跑生成器 ⇒ 命中数照样全 OK、门照样绿，而 qt5/
+        # src/ 改一行却不重跑生成器 ⇒ 命中数照样全OK、门照样绿，而 qt5/
         # 已经陈旧（Qt 5 侧的新写法会"明明写了却跑不起来"）。
         # 所以 --check 必须落到**逐文件比对**上，而不是停在计数。
-        drift = drift_between(gen_text, dest_root)
+        #⚠ 带 --also-examples 时，示例页也要进比对面：产物里存了它们，
+        #   不比就会被当成 27+ 个「残留（产物有、src/ 没有）」。
+        check_text = dict(gen_text)
+        if args.also_examples:
+            ex_src = os.path.abspath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             '..', 'examples'))
+            ex_root = os.path.join(dest_root, 'examples')
+            if os.path.isdir(ex_root):
+                for r, _d, fns in os.walk(ex_src):
+                    for fn in fns:
+                        if not fn.endswith('.qml'):
+                            continue
+                        sp = os.path.join(r, fn)
+                        rel = os.path.relpath(sp, ex_src).replace(os.sep, '/')
+                        txt = open(sp, encoding='utf-8', errors='replace').read()
+                        check_text['examples/' + rel] = downgrade_text(
+                            txt, counters, rel, prof)
+        drift = drift_between(check_text, dest_root)
         if drift is None:
             print(f'RESULT: 漂移 —— 入库产物不存在（{dest_root}）', file=sys.stderr)
             print('       先跑一次不带 --check 的生成，或确认 out 路径', file=sys.stderr)

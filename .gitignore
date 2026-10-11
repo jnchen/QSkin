@@ -17,6 +17,13 @@ build/
 # 探针遗留目录（qt5 二分排查时留下的）
 qt5_probe/
 
+# Qt 的 QML 编译缓存：跑一次 qmlscene/qml.exe 就在 .qml 旁边生成一个 .qmlc。
+# ⚠ 它是**引擎的缓存**，不是产物 —— 入库会与平台/编译器绑定（换台机器就废），
+#   而且会让「产物目录里有哪些文件」这个问题多出 178 个无关项
+#   （实测 qt511/ 因跑真引擎多出 178 个，qt5/ 保持 0 个）。
+*.qmlc
+*.jsc
+
 # ── 开发过程文档（**不是**说明书，不随发行版发布）──────────────────────
 #   现状（进仓库）：README.md · COVERAGE.md · CHANGELOG.md · docs/PITFALLS.md
 #   过程（只在工作副本）：ROADMAP.md（排期 + 读数 + checklist）

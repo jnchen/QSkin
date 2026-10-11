@@ -9,7 +9,7 @@
 
 ---
 
-## 十一、十八个踩过的坑（给要改构建 / 测试的人）
+## 十一、踩过的坑（给要改构建 / 测试 / 降级的人）
 
 1. **`console.log` 在 Windows 上什么都看不到。**
    Qt 的 Windows 构建是 GUI 子系统程序，没有控制台 —— 重定向到文件也是 0 字节。
@@ -757,5 +757,32 @@
 - **inline Component 之间 id 不互通**（M5 实测）。两个 delegate 各有各的声明作用域，
   A 里引用 B 实例的 id 运行时**静默失败**（无报错、内容空白）→ 跨 delegate 传数据要么
   走 `parent` 链（Repeater 会把 delegate 挂到宿主上），要么经文件级 id 中转。
+- **Qt 5.11 的版本上界是实测出来的，不是「5.11 对应 2.11」**（Qt 5.11 档实测）。
+  `QtQuick.Controls` 的**上界是 2.4**（5.11 的 `qml/` 下只有 `Controls.2` 一个目录，
+  2.5 起全部 `module … is not installed`）；而 `QtQuick` 2.11 / `Layouts` 1.11 /
+  `QtGraphicalEffects` **1.0** 可用。按直觉把 2.15 一律映射成 2.11，会让 33 个控件
+  在真引擎上**加载期就崩**，而所有生成器计数账照样全绿。
+- **`QtQuick.Shapes` 在 5.11 上是可用的**（实测 Shape / ShapePath / PathLine /
+  PathAngleArc / PathSvg / dashPattern / Shape.opacity 全部 rc=0），只有
+  `preferredRendererType` 不支持。原先「5.11 没有 Shapes、162 处路径要重写」的判断
+  **是错的** —— 凭印象估工程量，差点把项目推向一次没必要的大改造。
+  ⇒ **能力承诺必须有跑起来的宿主**，不能靠记忆或文档措辞推断。
+- **5.11 的守卫不能用 `x !== undefined`**（实测）。`readonly property var _corners:`
+  的值是函数调用，5.11 在它返回前就求值 `radius` ⇒ 每帧 `ReferenceError`。
+  而守卫写成 `_corners !== undefined ? … : 0` **无效**：对尚未声明完的属性做
+  `!== undefined`，守卫自己先抛 ReferenceError。正解是**真值判断** `c ? … : 0`。
+- **`qml.exe` 会把错误日志吞掉，`qmlscene` 不会**（实测）。5.11 的 `qml.exe` 失败时
+  只回 `Did not load any objects, exiting.` 且 **rc=0**；`qmlscene` 才给
+  `file:///…:1871 Expected token \`identifier'` 这种带行号的真错误。
+  ⇒ 诊断一律用 qmlscene；跑期错误还要加 `QT_FORCE_STDERR_LOGGING=1` 才看得见。
+- **`.qmlc` / `.jsc` 是引擎缓存，不是产物**（实测）。跑一次 qmlscene/qml.exe 就生成；
+  Qt 5.11 验证后 `qt511/` 多出 178 个 `.qmlc` + 10 个 `.jsc`（而 `qt5/` 保持 0 个）。
+  它们与平台/编译器绑定，若不排除，漂移门会被 188 条「残留」噪声淹没 ——
+  实测 `--check` 因此误报 215 处漂移而真问题一个没有。已加进 `.gitignore`（第 24–25 行）
+  并在 `snapshot()` 里排除。
+- **「提取块 → 改写 → 放回」会吃掉块前缀**（Qt 5.11 档实测，同一类错犯了两次）。
+  `_extract_block` 返回的是**从 `{` 开始**的块，直接拼回去就丢了
+  `gradient: ` / `Popup ` 这类前缀，产物里剩下孤零零的 `{`。
+  ⇒ 已抽 `_replace_block_keep_prefix()`，前缀只在一个地方拼。
 
 ---

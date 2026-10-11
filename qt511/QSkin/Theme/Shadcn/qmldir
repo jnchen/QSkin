@@ -1,0 +1,3 @@
+module QSkin.Theme.Shadcn
+
+singleton Shadcn 1.0 Shadcn.qml
