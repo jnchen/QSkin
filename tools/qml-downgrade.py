@@ -580,14 +580,33 @@ def split_code(text):
 
 
 def repl_in_code(text, pattern, rep, counters, key, flags=0):
-    """只在 code 段（非注释非字符串）做替换，返回新文本。"""
+    """只在 code 段（非注释非字符串）做替换，返回新文本。
+
+    ⚠⚠ `counters[key] += n_hit` 是**函数末尾一次性加**，所以回调里读到的
+      计数在**同一文件所有命中处都相同**（实测踩过：四角圆角降级要在同一文件
+      插入两个 `QtObject`，用它拼 id ⇒ 两处都是 `_c511_12` ⇒
+      QML 报 `id is not unique`，而且**加载期就失败**、
+      恰好落在「补光晕」那块 ⇒ 整个 InputBackground 类型不可用）。
+      ⇒ 回调签名给可调用 `rep` 追加一个**块序号**参数（从 0 起，
+      本次调用内的命中序号）—— 这是唯一可靠的唯一化来源。
+    """
     mask = build_mask(text)
     out, pos, n_hit = [], 0, 0
     for m in re.finditer(pattern, text, flags):
         s, e = m.span()
         if not all(mask[k] for k in range(s, min(e, len(mask)))):
             continue
-        piece = rep(m) if callable(rep) else m.expand(rep)
+        # ⚠ 回调有两种签名：老的 `rep(m)` 与需要块序号的 `rep(m, seq)`。
+        #   用 arity 探测，**不要**靠 try/exceptTypeError（回调内部自己抛的
+        #   TypeError 会被误判成签名不匹配，把真错误藏起来）。
+        if callable(rep):
+            try:
+                nargs = rep.__code__.co_argcount
+            except AttributeError:      #  functools.partial / callable 对象
+                nargs = 2
+            piece = rep(m, n_hit) if nargs >= 2 else rep(m)
+        else:
+            piece = m.expand(rep)
         out.append(text[pos:s]); out.append(piece)
         pos = e; n_hit += 1
     out.append(text[pos:])
@@ -703,7 +722,7 @@ def downgrade_text(text, counters, relpath, prof):
         #   补角矩形的 visible 同理。
         #   视觉结果与 Qt 6 一致（同一个 CornerUtil.corners、同一组参数）。
         inline = bool(prof.get('corner_radius_inline'))
-        def corner_rep(m):
+        def corner_rep(m, seq):
             ind, v = m.group(1), m.group(2)
             # 从 `readonly property var X:` 里取出那个表达式
             expr = _find_prop_expr(t, v)
@@ -717,8 +736,12 @@ def downgrade_text(text, counters, relpath, prof):
                 #   而 `QtObject` 是独立对象，不参与父子布局。
                 # ⚠ id 必须**每块唯一**：4 个 InputBackground 模板里各有一块
                 #   主体 + 一块光晕，同一文件里重复 id 会让 QML 报
-                #   `Duplicate property name`。用块序号区分。
-                cid = '_c511_%d' % counters[('corner', 'block')]
+                #   `id is not unique`，而它**在加载期就失败** ⇒ 整个
+                #   InputBackground 类型不可用（实测炸在深色场景抓图上）。
+                #   ⚠ 用 `seq`（本次调用内的命中序号），**不能**用
+                #   `counters[('corner','block')]` —— 那个是函数末尾才加的，
+                #   两处读到同一个值（实测产出 `_c511_12` 两遍）。
+                cid = '_c511_%d' % seq
                 out = [f'{ind}/* Qt 5.11：_corners 是函数调用属性，5.11 在它返回前\n'
                        f'{ind} * 就求值 radius ⇒ ReferenceError。守卫挡不住（读属性就抛）。\n'
                        f'{ind} * 正解：自己算一次放进一个 QtObject，后续都从它取。*/\n'

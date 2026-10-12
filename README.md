@@ -347,15 +347,39 @@ python tools/qml-downgrade.py --profile qt511 --also-examples   # 生成 Qt 5.11
 # 生成（--also-examples 才会把示例页也降级；抓图验证需要它们）
 python tools/qml-downgrade.py --profile qt511 --also-examples
 
-# 三层门，任何一层红都算Qt 5.11 不成立
+# 三层门，任何一层红都算 Qt 5.11 不成立
 python tools/check-residue.py qt511                # ① 产物无 Qt 6 写法残留（代码掩码口径）
 python tools/check-qt511-contracts.py qt511    # ② 真实 5.11.1 引擎逐个实例化 qmldir 里的对外控件
 python tools/falsify-qt511-gate.py                # ③ 证伪：注入 5 类缺陷，门必须变红
 
-# 真实页面抓图（27 页；库与示例要同一个 --lib根）
-QSkin_QT=/path/to/Qt/5.11.1/msvc2017_64 \
-python tools/grab-pages.py --lib qt511 --out .cache/qt511_pages
+# 插槽层（补上面三道的盲区，见下）
+python tools/check-qt511-slots.py --lib qt511# 常规
+python tools/check-qt511-slots.py --lib qt511 --make-baseline  # 生成中文判据的基线
+
+# 深色场景 + 它自己的证伪
+QSkin_QT=<Qt5.11根> python tools/check-dark-scene.py --lib qt511
+QSkin_QT=<Qt5.11根> python tools/falsify-dark-scene.py
+
+# 布局像素门（在 qt511 产物上跑，23 条判据）
+QSkin_QT=<Qt5.11根> ./tools/check-layout-pixels.sh --lib qt511
+
+# 真实页面抓图（27 页；库与示例要同一个 --lib 根）
+QSkin_QT=<Qt5.11根> python tools/grab-pages.py --lib qt511 --out .cache/qt511_pages
 ```
+
+**⚠ 插槽层那道门为什么必须单独有**（实测踩出来的）：
+`check-qt511-contracts.py` 逐个实例化 `qmldir` 里的**对外类型**，
+**不覆盖 `slots/`** —— 而 5.11 档的核心降级规则（四角半径内联）**只在插槽里生效**。
+上一版那个 `id is not unique` 的bug 就发生在这里：`TDInputBackground` **加载期就失败**
+⇒ `TDesign` 整个类型 unavailable ⇒ 3 个示例页 + 深色场景全挂，
+而那一刻**实例化门是绿的**、残留扫描绿的、漂移门绿的 —— 只有真实渲染看得见。
+
+**⚠ 中文在 Qt 5.11 上需要额外字体**（实测）：
+Qt 5.11 官方二进制**不自带字体**，缺 `lib/fonts` 时**所有文字都画不出来、引擎零报错**；
+而系统装了雅黑、Qt 却找不到它（Qt 只认自己的 `lib/fonts`）⇒ 中文渲染成
+**豆腐块**（带缺字形标记的空心方框）。库里的字体声明是对的
+（`Microsoft YaHei`，见 `src/themes/*/tokens.js`），**不是库的 bug，是环境缺字体**。
+做 5.11 抓图 / 验证前把 `msyh.ttc` 等中文字体拷进 `$QSkin_QT/lib/fonts/`。
 
 **Qt 5.11 的实测边界**（逐条在真实 5.11.1 上验过，写下来免得下次再撞）：
 
@@ -383,6 +407,8 @@ python tools/grab-pages.py --lib qt511 --out .cache/qt511_pages
 |---|---|---|
 | 产物无 Qt 6 写法残留（代码掩码口径） | — | ✅ 通过 |
 | 真实引擎逐个实例化全部对外控件 | Windows x64 | ✅ 通过 |
+| **插槽层加载 + 渲染**（59 个 `slots/*.qml`，含四角半径降级路径） | Windows x64 | ✅ 通过（证伪：注入 id 冲突变红） |
+| **中文字形真的画出来了**（对比无中文字体基线） | Windows x64 | ✅ 通过（证伪：移走雅黑变红） |
 | 变异证伪（注入缺陷门必须变红） | Windows x64 | ✅ 通过 |
 | 布局像素门（23 条判据，数值与 Qt 6 侧逐项相同） | Windows x64 | ✅ 通过 |
 | 深色场景（三态按钮 / 输入 / 标签 / 开关 + 自证块） | Windows x64 | ✅ 通过 |
