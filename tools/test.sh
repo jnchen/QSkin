@@ -106,12 +106,63 @@ for d in src/themes/*/; do
 done
 
 # ---------- 3. 跑测试 ----------
-# Windows GUI 子系统没有控制台，QML 报错默认走 OutputDebugString 而非
-# stderr —— 组件加载失败会**静默**变成"断言全错"，看不出真实原因。
-# 强制接到 stderr，失败时连同退出码一起回报（M13 实录）。
-export QT_FORCE_STDERR_LOGGING="${QT_FORCE_STDERR_LOGGING:-1}"
-
-FILES=$(find tests -name "smoke_*.qml" 2>/dev/null | sort)
+# ⚠ `--lib <产物目录>`：把冒烟跑在**降级产物**上（qt5/ · qt511/），
+#   而不是 src/。动机：src/ 那条线本来就有门，而「Qt 5.11 上冒烟还过吗」
+#   是另一个问题 —— 实测它会抓到 src/ 上永远抓不到的东西
+#   （import 版本、5.11 不支持的属性）。
+#   场景本身是 Qt 6 写法 ⇒ 跑之前**逐个降级**到 .cache/smoke.<lib>/，
+#   原件一个字都不改。
+# 用法：
+#   ./tools/test.sh                          # Qt 6 侧（默认）
+#   QSkin_QT=<根> ./tools/test.sh --lib qt511  # 在 5.11 产物上跑
+#   QSkin_QT=<根> ./tools/test.sh --lib qt511 --only smoke_layout  # 只跑几个
+SMOKE_LIB="src"
+ONLY=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --lib)  SMOKE_LIB="$2"; shift 2 ;;
+        --only) ONLY="$2"; shift 2 ;;
+        *)      shift ;;
+    esac
+done
+IMPORT_ARG=".cache/qmlimports"
+if [ "$SMOKE_LIB" != "src" ]; then
+    SMOKE_DIR=".cache/smoke.$SMOKE_LIB"
+    echo "（冒烟跑在降级产物：$SMOKE_LIB ⇒ 场景先降到 $SMOKE_DIR/）"
+    QSkin_PYTHON_FALLBACK="${QSkin_PYTHON:-python}"
+    "$QSkin_PYTHON_FALLBACK" - "$SMOKE_LIB" "$SMOKE_DIR" <<'PYEOF'
+import sys, os, collections, importlib.util
+lib, outdir = sys.argv[1], sys.argv[2]
+root = os.getcwd()
+sys.path.insert(0, os.path.join(root, 'tools'))
+spec = importlib.util.spec_from_file_location(
+    'dg', os.path.join(root, 'tools', 'qml-downgrade.py'))
+dg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(dg)
+prof = dg.PROFILES[lib]
+src = os.path.join(root, 'tests')
+dst = os.path.join(root, outdir)
+n = 0
+for fn in sorted(os.listdir(src)):
+    if not (fn.startswith('smoke_') or fn.startswith('scene_')):
+        continue
+    if not fn.endswith('.qml'):
+        continue
+    txt = open(os.path.join(src, fn), encoding='utf-8').read()
+    out = dg.downgrade_text(txt, collections.Counter(), fn, prof)
+    os.makedirs(dst, exist_ok=True)
+    open(os.path.join(dst, fn), 'w', encoding='utf-8', newline='\n').write(out)
+    n += 1
+print('  已降级 %d 个场景' % n)
+PYEOF
+    FILES=$(find "$SMOKE_DIR" -name "smoke_*.qml" 2>/dev/null | sort)
+    IMPORT_ARG="$(pwd)/$SMOKE_LIB"
+else
+    FILES=$(find tests -name "smoke_*.qml" 2>/dev/null | sort)
+fi
+if [ -n "$ONLY" ]; then
+    FILES=$(echo "$FILES" | grep "$ONLY" || true)
+fi
 if [ -z "$FILES" ]; then
     echo "tests/ 下没有 smoke_*.qml"
     exit 1
@@ -168,7 +219,7 @@ for f in $FILES; do
 
     set +e
     # shellcheck disable=SC2086
-    $TIMEOUT_CMD "$QML" -I .cache/qmlimports "$f" > "$ERRLOG" 2>&1
+    $TIMEOUT_CMD "$QML" -I "$IMPORT_ARG" "$f" > "$ERRLOG" 2>&1
     code=$?
     set -e
 

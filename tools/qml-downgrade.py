@@ -143,10 +143,13 @@ PROFILES = {
         },
         expect_nover={'QtQuick.Shapes': 35, 'QtQuick': 10, 'QtQuick.Effects': 2},
         corner_radius=True,
-        # ⚠ 只 5.11 需要：`_corners` 是函数调用属性，5.11 在它就绪前
-        #   就求值 radius ⇒ 每帧 ReferenceError（实测 12 处 × 4 主题）。
-        #   qt515 不开——那档已验证过，改它等于动已通过的产物。
-        corner_radius_guard=True,
+        # ⚠ 只 5.11 需要：`_corners` 是**函数调用属性**，5.11 在函数返回前
+        #   就求值 radius ⇒ 每帧 ReferenceError（实测 12 处 × 4 主题，
+        #   波及 13 个冒烟 + 16 个示例页）。
+        #   正解是**内联函数调用**、不读那个属性。
+        #   ⚠ 中间试过两种守卫（`!== undefined` 与真值判断）**都无效** ——
+        #   只要读属性就抛，详见下面注释。qt515 不开（那档已验证过）。
+        corner_radius_inline=True,
         expect_corner=14,
         drop_props={'preferredRendererType': 43},   # 实测 5.11 不支持（qt515 同）
         drop_inline={'restoreMode': 4},
@@ -597,6 +600,43 @@ def repl_in_code(text, pattern, rep, counters, key, flags=0):
 # Connections 新语法 → 老语法（Qt 5.11 实测：新语法 rc=0 但**不生效**，比报错更危险）
 
 
+def _find_prop_expr(text, var):
+    """从 `readonly property var <var>:\n    <表达式>` 里取出那个表达式。
+
+    表达式可能跨多行（如 `CornerUtil.corners(a,\n  b)`），所以要**读到下一个
+    属性行或空行为止**，再把换行与缩进压成单空格。
+
+    找不到返回 None —— 调用方必须**报出来**，不能静默退回错误写法。
+    """
+    m = re.search(r'^[ \t]*(?:readonly\s+)?property\s+var\s+' + re.escape(var)
+                  + r'\s*:\s*$', text, re.M)
+    if not m:
+        m2 = re.search(r'^[ \t]*(?:readonly\s+)?property\s+var\s+'
+                       + re.escape(var) + r'\s*:\s*([^\n]*)$', text, re.M)
+        if not m2:
+            return None
+        return m2.group(1).strip()
+    # 多行形态：往下吃到「缩进回退到声明层级且非空」为止
+    lines = text[m.end():].split('\n')
+    parts = []
+    for ln in lines:
+        if not ln.strip():
+            if parts:
+                break
+            continue
+        indent = len(ln) - len(ln.lstrip())
+        if parts and indent <= len(ln) - len(ln.lstrip()) and re.match(
+                r'^\s*\w+\s*:', ln):
+            break
+        if re.match(r'^\s*\w+\s*:', ln) and not parts:
+            break        # 第一行就是别的属性 ⇒ 声明为空
+        parts.append(ln.strip())
+        if len(parts) > 6:
+            break
+    expr = ' '.join(parts).strip()
+    return expr or None
+
+
 def downgrade_text(text, counters, relpath, prof):
     t = text
 
@@ -647,25 +687,53 @@ def downgrade_text(text, counters, relpath, prof):
 
     # R2b 四角独立半径 → 主体取最大值 + 补角矩形（Qt5 无 topLeftRadius 等）
     if prof['corner_radius']:
-        # ⚠⚠ Qt 5.11 专属守卫：`readonly property var _corners:` 的值是
-        #   **函数调用**（CornerUtil.corners(...)），5.11 在它返回之前就求值
-        #   radius ⇒ 每帧 `ReferenceError: _corners is not defined`
-        #   （实测波及 12 处 × 4 主题、16 个示例页报该错）。Qt 6 不会。
+        # ⚠⚠ Qt 5.11 专属：`readonly property var _corners:` 的值是**函数调用**
+        #   （CornerUtil.corners(...)）。Qt 6 的引擎会等它求值完再算 radius，
+        #   5.11 **不等** —— 在调用返回之前就求值 radius，于是每帧
+        #   `ReferenceError: _corners is not defined`（实测 12 处 × 4 主题，
+        #   16 个示例页 + 13 个冒烟文件报它）。
         #
-        #⚠⚠ 守卫**只能**用真值判断 `{v} ? … : 0`：
-        #   第一版写的是 `{v} !== undefined ? … : 0`，看着等价、实测无效 ——
-        #   QML 里对一个**尚未声明完**的属性做 `!== undefined`，抛的还是
-        #   ReferenceError（守卫自己先炸了）。
-        #   真值判断不同：属性声明在 radius 之前（所以引用合法），
-        #   求值时值仍是 null → 走 0 分支，随后绑定自动重算。
-        #   实测 5.11 上 `property var c: null` + `c ? … : 0` 无任何报错。
-        guard = bool(prof.get('corner_radius_guard'))
+        # ⚠⚠ 守卫**救不了**，两种写法都试过、都不行：
+        #   · `c !== undefined ? … : 0` —— 对尚未声明完的属性做 !== undefined，
+        #     **守卫自己先抛** ReferenceError；
+        #   · `c ? … : 0` —— 真值判断本身不抛，但只要 5.11 在函数返回前就
+        #     求值 radius，读 `c` 时它仍未绑定 → 还是抛。
+        # ⇒ 正解：**别读那个属性**，把函数调用**内联**进 radius 表达式。
+        #   函数调用是表达式，QML 会当场求值 —— 不依赖任何绑定是否就绪。
+        #   补角矩形的 visible 同理。
+        #   视觉结果与 Qt 6 一致（同一个 CornerUtil.corners、同一组参数）。
+        inline = bool(prof.get('corner_radius_inline'))
         def corner_rep(m):
             ind, v = m.group(1), m.group(2)
-            if guard:
+            # 从 `readonly property var X:` 里取出那个表达式
+            expr = _find_prop_expr(t, v)
+            if inline and expr:
+                # ⚠ 直接内联会让 `CornerUtil.corners(...)` **被调用 4 次**
+                #   （每个 .tl/.tr/.br/.bl 一次）—— 正确但浪费，
+                #   而它在 5.11 上是一次函数调用 + 单例访问，不便宜。
+                #   正解：先算一次放进一个 `var`，后续都从它取。
+                #   ⚠ 用 QtObject 而不是局部变量：QML 的 `var` 属性绑定
+                #   是**惰性**的，写在 radius 之前声明即可；
+                #   而 `QtObject` 是独立对象，不参与父子布局。
+                # ⚠ id 必须**每块唯一**：4 个 InputBackground 模板里各有一块
+                #   主体 + 一块光晕，同一文件里重复 id 会让 QML 报
+                #   `Duplicate property name`。用块序号区分。
+                cid = '_c511_%d' % counters[('corner', 'block')]
+                out = [f'{ind}/* Qt 5.11：_corners 是函数调用属性，5.11 在它返回前\n'
+                       f'{ind} * 就求值 radius ⇒ ReferenceError。守卫挡不住（读属性就抛）。\n'
+                       f'{ind} * 正解：自己算一次放进一个 QtObject，后续都从它取。*/\n'
+                       f'{ind}QtObject {{ id: {cid}; property var v: {expr} }}\n'
+                       f'{ind}radius: {cid}.v'
+                       f' ? Math.max({cid}.v.tl, {cid}.v.tr, {cid}.v.br, {cid}.v.bl) : 0\n']
+                corner_expr = cid + '.v'
+            elif inline:
+                # 找不到声明就退回守卫形态，但**明确报出来**（不能静默）
+                counters[('corner', 'INLINE_MISS')] += 1
                 out = [f'{ind}radius: {v} ? Math.max({v}.tl, {v}.tr, {v}.br, {v}.bl) : 0\n']
+                corner_expr = v
             else:
                 out = [f'{ind}radius: Math.max({v}.tl, {v}.tr, {v}.br, {v}.bl)\n']
+                corner_expr = v
             out.append(
                 f'{ind}/* Qt 5.15 无四角独立半径（topLeftRadius 等是 Qt 6 独有，且只在\n'
                 f'{ind} * 「无版本 import」下才存在 —— 原注释有实测记录）。\n'
@@ -683,10 +751,8 @@ def downgrade_text(text, counters, relpath, prof):
                     ('tr', 'parent.width - radius', '0'),
                     ('br', 'parent.width - radius', 'parent.height - radius'),
                     ('bl', '0', 'parent.height - radius')):
-                # ⚠ 补角的 visible 同样要真值守卫（理由同 radius 那一行：
-                #   `!== undefined` 对未就绪属性会自己先抛 ReferenceError）。
-                vis = (f'{v} && {v}.{corner} < radius' if guard
-                       else f'{v}.{corner} < radius')
+                # ⚠ 补角的 visible 与 radius 同因同解：同一个 _c511.v
+                vis = f'{corner_expr}.{corner} < radius'
                 out.append(f'{ind}Rectangle {{ visible: {vis}; '
                            f'x: {cx}; y: {cy}; '
                            f'width: radius; height: radius; '
