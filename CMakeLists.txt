@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 # 项目版本：约定见 CHANGELOG.md 的「版本号约定」一节。
 # ⚠ 别把这里和下面各模块的导入版本混为一谈（那是 `import QSkin.X 1.0` 的那个 1.0）。
-project(QSkin VERSION 0.0.1 LANGUAGES CXX)
+project(QSkin VERSION 0.2.0 LANGUAGES CXX)
 
 # ─────────────────────────────────────────────────────────────────────────
 # QSkin · Quick Design System

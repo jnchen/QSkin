@@ -329,7 +329,19 @@ QSkinWindow {
                     id: table
 
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 420
+                    /* ⚠ **不要写 `Layout.preferredHeight`**。
+
+                       表格有 13 行 × rowHeight(40) + 表头 40 ≈ 560px，
+                       把高度按成 420 就**内容溢出**，而 Qt 的 Layout
+                       **不会**因为子项画出去而给别的项让位 —— 下面
+                       那行「完全选中 N 个」被压住，两行字叠在一起。
+
+                       `QSkinTable.implicitHeight` 已经是
+                       `headerHeight + 行数 × rowHeight`，不设就是
+                       **按内容撑**，这才是「内容有多少给多少」。
+
+                       （M13/M14/M15/M16 与 HelloIcons 都没设，
+                       只有本页设了 —— 孤例。）*/
 
                     treeMode: true
                     checkable: true

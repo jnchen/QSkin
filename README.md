@@ -81,9 +81,35 @@ QML 没有这层约定，于是每个初学者都在手算 x/y，写出来的界
 │  地基层  Foundation（M0 · 已落地）                         │
 │  UI 无关：Layout / Spacing / Typography                  │
 │           Breakpoints / Focus / 按钮布局系统              │
+│           文本度量 TextMetricsUtil                        │
 │  完全不关心最终长什么样 —— 这是"UI 无关"的字面意思          │
 └─────────────────────────────────────────────────────────┘
 ```
+
+### 渲染前量文本：`TextMetricsUtil`
+
+QML 的绑定是**声明式 + 惰性**的：`height: text.implicitHeight` 要等 polish
+才算出结果。于是「按宽度算高度 → 据此定容器 → 据此排兄弟」这条链在 QML 里
+只能写成死算式，或者**先塌一下再撑开**（CLS 那个问题）。
+
+```qml
+import QSkin.Foundation 1.0
+
+Item {
+    // 签名：lineCountAt(text, maxWidth, font?) / blockHeightAt(text, maxWidth, font?, lineHeight?, mode?)
+    TextMetricsUtil.lineCountAt("按宽度折行", 200)                  // → 行数（渲染前就有答案）
+    TextMetricsUtil.blockHeightAt("按宽度折行", 200, null, 16)      // → 整块高
+    TextMetricsUtil.fitsIn("一行放得下吗", 120)                    // → bool
+}
+```
+
+改 `TextMetrics.text` 再读是**同步**的 —— 不等帧、不触发 reflow。
+
+> ⚠ **两个坑已在源码里写明，这里再提一次**：
+> ① 度量要用 `advanceWidth`（排版真正用的前进宽度），**不是** `width`
+>   （包围盒，含左右 side bearing）—— 混用会让逐字累加凭空少几十 px；
+> ② 自然行高要 `ceil`（`round` 只在默认字体下偶然成立）。
+> 这两条都实测踩过：贪心算法因此与引擎差一行。
 
 **为什么要插入一个"契约层"？**
 因为少了它，"多主题"就会退化成"复制 4 份控件代码"。
@@ -130,7 +156,7 @@ QML 没有这层约定，于是每个初学者都在手算 x/y，写出来的界
 | 命令 | 内容 |
 |---|---|
 | `./tools/lint.sh` | qmllint（**264** 个文件，0 警告）+ **12 道脚本门禁**（字符图标 · Shape 抗锯齿 · 未定义函数 · comprehension 作用域 · 令牌名 · 构建清单 · 清单与 qmldir 对账 · 变异残留审计 · i18n · 发布面泄露 · Qt 5 产物漂移 · 发布面读数对账）|
-| `./tools/test.sh` | **48 个冒烟** + 真鼠标事件 + 纯函数独立算路 + **两道像素门**（布局 / 输入底板）+ **两道运行期门**（警告 / 翻译）+ **五宿主对账**（qml / C++ / PySide6 / PyQt5 / C++ Qt 5） |
+| `./tools/test.sh` | **49 个冒烟** + 真鼠标事件 + 纯函数独立算路 + **两道像素门**（布局 / 输入底板）+ **两道运行期门**（警告 / 翻译）+ **五宿主对账**（qml / C++ / PySide6 / PyQt5 / C++ Qt 5） |
 
 ⚠ 布局是**有损翻译层**（抽象模型不同，只能管理不能消灭）—— 这是本项目**已知的
 最大差距**；对照表在 `COVERAGE.md` 第一节，展开见本文件第十节。

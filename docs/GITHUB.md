@@ -48,8 +48,8 @@ Qt Quick 的框架级设计系统：一层样式契约，四套设计语言（TD
 `TDesign` · `Ant Design` · `Arco Design` · `shadcn`
 
 [![license](https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-blue.svg)](LICENSE-MIT)
-[![qt](https://img.shields.io/badge/Qt-6.8%2B%20%7C%20Qt--5.15-green.svg)](https://doc.qt.io)
-[![version](https://img.shields.io/badge/version-0.0.1-lightgrey.svg)](CHANGELOG.md)
+[![qt](https://img.shields.io/badge/Qt-6.8%2B%20%7C%20Qt--5.15%20%7C%20Qt--5.11-green.svg)](https://doc.qt.io)
+[![version](https://img.shields.io/badge/version-0.2.0-lightgrey.svg)](CHANGELOG.md)
 
 </div>
 
@@ -183,8 +183,9 @@ engine.load(QUrl::fromLocalFile("Main.qml"));
 
 ## 状态与路线
 
-**0.0.1 是「第一个可被外部评估的快照」，不是功能完整版，也不承诺 API 稳定。**
-对外的承诺只有三条：**能装**、**能信**、**边界清楚**（做不了的写在明处）。
+**0.2.0 仍不承诺 API 稳定** —— 它是「能被外部评估的快照」，不是功能完整版。
+对外的承诺只有三条：**能装**、**能信**、**边界清楚**（做不了的写在明处 ——
+比如 Qt 5.11 目前只在 Windows x64 上验过，Linux 侧待目标机验证）。
 
 已知限制与取舍逐条列在 `README.md` 第十节，不藏。
 
@@ -217,19 +218,26 @@ pyside6
 
 ---
 
-## ④ Release notes 模板（0.1.0 用；现在先建 0.0.1 的 release）
+## ④ Release notes 模板
 
 ```markdown
-## QSkin 0.0.1 — $(date +%Y-%m-%d)
+## QSkin 0.2.0 — $(date +%Y-%m-%d)
 
-第一个可被外部评估的快照。**不承诺 API 稳定。**
+第二个可被外部评估的快照。**不承诺 API 稳定。**
+
+### 本版要点
+
+- **Qt 5.11 档**（`qt511/`）：为 **openEuler 20.03 LTS**（系统 Qt 5.11.1）而做。
+  实测推翻了「5.11 没有 Shapes」的判断 ⇒ 162 处路径无需重写。
+  ⚠ **只在 Windows x64 上验过，Linux 侧待目标机验证。**
+- **`TextMetricsUtil`**：渲染前同步量行数 / 块高（不等帧、不 reflow）。
 
 ### 读数（都可复算，命令写在 README / COVERAGE）
 
 - 契约层 92 个 `QSkin*.qml`；qmldir 声明 105 类型 + 17 单例
 - 组件覆盖 ✅86 · 🔶2（终态声明，非欠账）· ⬜0
 - 主题 4 家 × 明暗 = 8 套
-- 门禁：qmllint 264 文件 0 警告 + 12 道脚本门；48 冒烟 + 2 像素门 + 2 运行期门
+- 门禁：qmllint 264 文件 0 警告 + 12 道脚本门；49 冒烟 + 2 像素门 + 2 运行期门
 
 ### 五宿主实测对账
 

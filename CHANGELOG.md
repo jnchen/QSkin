@@ -13,7 +13,40 @@
 
 ---
 
-## 未发布
+## 0.2.0 - 2026-10-12
+
+> ⚠ **版本号说明**：已发布的 `v0.1.0` tag 指向的提交里，`CMakeLists.txt` 与本文件
+> 写的都是 **0.0.1** —— 按本文末尾「版本号约定」的**单点定义**（在 `CMakeLists.txt`），
+> 那个 tag 实际发布的是 **0.0.1**，tag 名与内容不符。旧 tag 不删、不移动，
+> 本次起按 **0.2.0** 继续。
+
+### Foundation 新增 `TextMetricsUtil`：渲染前量文本
+
+```qml
+TextMetricsUtil.lineCountAt("按宽度折行", 200)              // → 行数
+TextMetricsUtil.blockHeightAt("按宽度折行", 200, null, 16) // → 整块高
+TextMetricsUtil.fitsIn("一行放得下吗", 120)                // → bool
+```
+
+QML 的绑定是**声明式 + 惰性**的：`height: text.implicitHeight` 要等 polish
+才算出结果。于是「按宽度算高度 → 据此定容器 → 据此排兄弟」这条链在 QML 里
+只能写成死算式，或者**先塌一下再撑开**（CLS 那个问题）。本单例给的是
+那条**渲染前的答案** —— 改 `TextMetrics.text` 再读是**同步**的，
+不等帧、不触发 reflow。
+
+**两处口径修正**（都是实测抓出来的，写在源码与 README 里）：
+
+1. **必须用 `advanceWidth`，不是 `width`。** `TextMetrics` 有三个宽度口径：
+   `width`（包围盒，含左右 side bearing）/ `advanceWidth`（排版真正用的前进宽度）
+   / `tightBoundingRect`。引擎排版按 `advanceWidth` 累加，用 `width` 逐字加会
+   把每个字符的边距**重复计入** —— 实测一串 9 字凭空少 **27.91px**，
+   贪心因此**多塞进一个字**，那一行就比引擎的宽 ⇒ 大字号下差一行。
+2. **自然行高要 `ceil`**，`round` 只在默认字体下偶然成立（Segoe UI 会错）。
+   另一处错误是测试本身：高度对照组当时用了**不同字体**，拿两套字体互比。
+
+> 顺带：上一版的测试把 `width` 当成"恒等口径"，断言全绿而算法与引擎差一行。
+> 这次对照的是**引擎自己的 `Text.lineCount` / `Text.implicitHeight`**，
+> 与脚本算的 `3/3` 一致。
 
 ### Qt 5.11 档：openEuler 20.03 LTS（Qt 5.11.1）
 
