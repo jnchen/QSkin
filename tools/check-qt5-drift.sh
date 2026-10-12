@@ -49,4 +49,12 @@ if [ -z "$PY" ]; then
 fi
 
 echo "（解释器：$PY）"
+# ⚠⚠ `--also-examples` 必须**跟着产物走**：入库的 qt5/ 里**含 examples/**
+#   （生成时带了它），而 `--check` 默认只扫 src/ ⇒ 于是每个 examples 文件
+#   都被报成「残留：产物有、src/ 没有」⇒ 27 处假漂移（实测）。
+#   ⇒ 按产物里**实际有没有** examples 目录来决定，而不是写死。
+#   （对照：生成侧 `regenerate-incremental.py qt515 --with-examples`）
+if [ -d qt5/examples ]; then
+    exec "$PY" tools/qml-downgrade.py --profile qt515 --also-examples --check
+fi
 exec "$PY" tools/qml-downgrade.py --profile qt515 --check

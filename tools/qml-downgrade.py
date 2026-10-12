@@ -67,6 +67,14 @@ PROFILES = {
         # 14 = 10 个文件，其中 4 个主题 InputBackground 各有 2 块（本体 + 聚焦光晕）。
         # ⚠ 别用 re.search 数文件：那每文件只取首个块，会读成 10。
         expect_corner=14,
+        # ⚠⚠ **5.15 也要开内联**（实测：之前只开了 5.11，这里漏了）。
+        #   5.15 同样不等`readonly property var` 的函数调用返回就求值 radius
+        #   ⇒ 每帧 ReferenceError。补角的 `visible` 读同一个属性，于是
+        #   **补角矩形一次都不显示** —— 而这件事从渲染图上完全看不出来
+        #   （少了几个方角而已，很容易当成正常）。
+        #   实测跑法：在 5.15 上跑 tools/check-qt511-slots.py --lib qt5，
+        #   8 条加载期错误全部是它。
+        corner_radius_inline=True,
         # Qt 6 独有属性，Qt 5.15 无对应物 → 整行删掉（值无等价物，不能改写成别的）
         drop_props={'preferredRendererType': 43},
         # 行内片段删除（不能整行删：这些属性写在行尾且带 `}`，整行删会吃掉花括号）

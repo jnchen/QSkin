@@ -81,6 +81,55 @@ if [ -z "$TOOLCHAIN_DIR" ]; then
     exit 1
 fi
 
+# ---------- 5. 补中文字体（Qt 5.11 必需；6.8 上无害）----------
+#
+# ⚠⚠ **为什么这一步不能省**（实测踩过，且引擎零报错）：
+#   Qt **官方二进制不带字体**（5.11 更是连 `lib/fonts` 目录都没有），
+#   而它**只认自己那份** —— 系统明明装了雅黑，它也找不到。
+#   结果：`Microsoft YaHei` 解析失败 ⇒ 回退到无中文字形的字体
+#   ⇒ **每一页的中文都是空心方框**，而 `qml.exe` rc=0、
+#   `qmlscene` 只报无关的 OpenGL 提示。**从控制台完全看不出来**，
+#   只有把图抓下来看才知道（见 docs/PITFALLS.md）。
+#   ⚠ 不是库的 bug —— 库的字体声明是对的。
+#
+#   Qt 6.8 自带 DejaVu（无 CJK），所以这一步在 6.x 上同样是**必要**的。
+FONT_SEED=""
+case "$(uname -s 2>/dev/null || echo Windows)" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+        # Windows：直接用系统字体
+        for c in /c/Windows/Fonts/msyh.ttc "$USERPROFILE/AppData/Local/Microsoft/Windows/Fonts/msyh.ttc" \
+                 /c/Windows/Fonts/simsun.ttc /c/Windows/Fonts/simhei.ttf; do
+            [ -f "$c" ] && FONT_SEED="$c" && break
+        done
+        ;;
+    Linux|Darwin)
+        # ⚠ **不要用 `**`glob** —— bash 要 `shopt -s globstar` 才有，
+        #   而这个脚本是 `sh` 兼容写法、未必生效 ⇒ 会静默匹配不到。
+        #   用 find（可移植、行为确定）。
+        FONT_SEED=$(find /usr/share/fonts /usr/local/share/fonts \
+                    -type f \( -iname '*YaHei*' -o -iname '*msyh*' \
+                    -o -iname '*NotoSansCJK*' -o -iname '*wqy*' \
+                    -o -iname '*SimHei*' -o -iname '*simsun*' \
+                    -o -iname '*SourceHanSans*' \) 2>/dev/null | head -1)
+        ;;
+esac
+
+FONT_DIR="$TOOLCHAIN_DIR/lib/fonts"
+if [ -z "$FONT_SEED" ]; then
+    echo ""
+    echo "⚠️  找不到可用的中文字体（msyh / NotoSansCJK / 文泉驿 / SimHei…）"
+    echo "    Qt 不会自带，缺了它**中文会渲染成空心方框而引擎不报错**。"
+    echo "    手工放一份进去即可：把任意中文 .ttf/.ttc/.otf 拷到"
+    echo "      $FONT_DIR"
+else
+    # ⚠ `lib/fonts` **默认不存在** —— 实测本机三套 Qt（5.11.1 / 5.15.2 × 2 /
+    #   6.8.3）装出来**全都没有**这个目录。所以必须 mkdir，
+    #   不能「不存在就跳过」—— 那样这段等于永不生效（实测踩过一次）。
+    mkdir -p "$FONT_DIR"
+    cp "$FONT_SEED" "$FONT_DIR/"
+    echo "==> 中文字体已就位：$(basename "$FONT_SEED") → $FONT_DIR"
+fi
+
 echo ""
 echo "==> 完成"
 "${TOOLCHAIN_DIR}bin/qmllint" --version

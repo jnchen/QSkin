@@ -41,17 +41,21 @@ Rectangle {
      */
     readonly property var _corners: CornerUtil.corners(d.groupPosition(), Theme.radius.md)
 
-    radius: Math.max(_corners.tl, _corners.tr, _corners.br, _corners.bl)
+    /* Qt 5.11：_corners 是函数调用属性，5.11 在它返回前
+     * 就求值 radius ⇒ ReferenceError。守卫挡不住（读属性就抛）。
+     * 正解：自己算一次放进一个 QtObject，后续都从它取。*/
+    QtObject { id: _c511_0; property var v: CornerUtil.corners(d.groupPosition(), Theme.radius.md) }
+    radius: _c511_0.v ? Math.max(_c511_0.v.tl, _c511_0.v.tr, _c511_0.v.br, _c511_0.v.bl) : 0
     /* Qt 5.15 无四角独立半径（topLeftRadius 等是 Qt 6 独有，且只在
      * 「无版本 import」下才存在 —— 原注释有实测记录）。
      * 降级：主体取四角最大值，再用补角矩形把该直的角填回方形。
      * 已知差异：补角会盖掉一小段 border，而那正是分组按钮与相邻
      * 按钮的接缝；standalone（四角全等）与中段（四角全零）两种
      * 情形与 Qt 6 侧逐像素一致。 */
-    Rectangle { visible: _corners.tl < radius; x: 0; y: 0; width: radius; height: radius; color: parent.color }
-    Rectangle { visible: _corners.tr < radius; x: parent.width - radius; y: 0; width: radius; height: radius; color: parent.color }
-    Rectangle { visible: _corners.br < radius; x: parent.width - radius; y: parent.height - radius; width: radius; height: radius; color: parent.color }
-    Rectangle { visible: _corners.bl < radius; x: 0; y: parent.height - radius; width: radius; height: radius; color: parent.color }
+    Rectangle { visible: _c511_0.v.tl < radius; x: 0; y: 0; width: radius; height: radius; color: parent.color }
+    Rectangle { visible: _c511_0.v.tr < radius; x: parent.width - radius; y: 0; width: radius; height: radius; color: parent.color }
+    Rectangle { visible: _c511_0.v.br < radius; x: parent.width - radius; y: parent.height - radius; width: radius; height: radius; color: parent.color }
+    Rectangle { visible: _c511_0.v.bl < radius; x: 0; y: parent.height - radius; width: radius; height: radius; color: parent.color }
 
     color:        d.bg()
     border.width: d.borderWidth()

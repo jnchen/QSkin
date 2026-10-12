@@ -374,12 +374,24 @@ QSkin_QT=<Qt5.11根> python tools/grab-pages.py --lib qt511 --out .cache/qt511_p
 ⇒ `TDesign` 整个类型 unavailable ⇒ 3 个示例页 + 深色场景全挂，
 而那一刻**实例化门是绿的**、残留扫描绿的、漂移门绿的 —— 只有真实渲染看得见。
 
-**⚠ 中文在 Qt 5.11 上需要额外字体**（实测）：
-Qt 5.11 官方二进制**不自带字体**，缺 `lib/fonts` 时**所有文字都画不出来、引擎零报错**；
-而系统装了雅黑、Qt 却找不到它（Qt 只认自己的 `lib/fonts`）⇒ 中文渲染成
-**豆腐块**（带缺字形标记的空心方框）。库里的字体声明是对的
-（`Microsoft YaHei`，见 `src/themes/*/tokens.js`），**不是库的 bug，是环境缺字体**。
-做 5.11 抓图 / 验证前把 `msyh.ttc` 等中文字体拷进 `$QSkin_QT/lib/fonts/`。
+**⚠ 中文需要额外装字体（所有 Qt 版本都要，5.11 尤其）**：
+Qt **官方二进制不带字体** —— 实测 `lib/fonts/` 在 5.11.1 / 5.15.2 / 6.8.3
+**三个版本里全都不存在**，而它**只认自己那份**：系统明明装了雅黑、它也找不到。
+结果 `Microsoft YaHei` 解析失败 ⇒ 回退到无中文字形的字体 ⇒
+**每一页的中文都是空心方框**，而 `qml.exe` rc=0、`qmlscene` 只报无关的 OpenGL 提示。
+⚠ **库的字体声明是对的，不是库的 bug** —— 从控制台完全看不出来。
+
+`./tools/install-qt.sh` **装完会自动补一份中文字体**（Windows 找 msyh / simsun /
+simhei，Linux 与macOS 找 NotoSansCJK / 文泉驿 / Source Han Sans）。
+手动装 Qt 的话，把任意中文 `.ttf/.ttc/.otf` 拷进 `$QtRoot/lib/fonts/`。
+
+**⚠ 哪道门能用在哪个档上**（**拿错会假红**，实测）：
+
+| 工具 | 适用 | 不适用 |
+|---|---|---|
+| `check-residue.py <档>` | `qt511` | ❌ `qt5/` —— 它按 5.11 口径判 `required property` 与 Pointer Handler，而这两类在 5.15 **是合法的**，会报 6 类假残留 |
+| `check-qt511-contracts.py <档>` | `qt511` | ❌ `qt5/` —— 名字与实现都写死了 5.11 |
+| **`check-qt511-slots.py --lib <目录>`** | ✅ `qt511` **与 `qt5`** 两档 | —— 它按 `--lib` 走，是唯一两档都能用的（名字里的 "qt511" 有歧义） |
 
 **Qt 5.11 的实测边界**（逐条在真实 5.11.1 上验过，写下来免得下次再撞）：
 
