@@ -49,7 +49,7 @@ Qt Quick 的框架级设计系统：一层样式契约，四套设计语言（TD
 
 [![license](https://img.shields.io/badge/license-MIT%20%7C%20Apache--2.0-blue.svg)](LICENSE-MIT)
 [![qt](https://img.shields.io/badge/Qt-6.8%2B%20%7C%20Qt--5.15%20%7C%20Qt--5.11-green.svg)](https://doc.qt.io)
-[![version](https://img.shields.io/badge/version-0.2.0-lightgrey.svg)](CHANGELOG.md)
+[![version](https://img.shields.io/badge/version-0.3.0-lightgrey.svg)](CHANGELOG.md)
 
 </div>
 
@@ -183,7 +183,7 @@ engine.load(QUrl::fromLocalFile("Main.qml"));
 
 ## 状态与路线
 
-**0.2.0 仍不承诺 API 稳定** —— 它是「能被外部评估的快照」，不是功能完整版。
+**0.3.0 仍不承诺 API 稳定** —— 它是「能被外部评估的快照」，不是功能完整版。
 对外的承诺只有三条：**能装**、**能信**、**边界清楚**（做不了的写在明处 ——
 比如 Qt 5.11 目前只在 Windows x64 上验过，Linux 侧待目标机验证）。
 
@@ -221,16 +221,32 @@ pyside6
 ## ④ Release notes 模板
 
 ```markdown
-## QSkin 0.2.0 — $(date +%Y-%m-%d)
+## QSkin 0.3.0 — $(date +%Y-%m-%d)
 
-第二个可被外部评估的快照。**不承诺 API 稳定。**
+**三个修复，都属于「自动化全绿、实际渲染不对」那一类。**
+**不承诺 API 稳定。**
 
 ### 本版要点
 
-- **Qt 5.11 档**（`qt511/`）：为 **openEuler 20.03 LTS**（系统 Qt 5.11.1）而做。
-  实测推翻了「5.11 没有 Shapes」的判断 ⇒ 162 处路径无需重写。
-  ⚠ **只在 Windows x64 上验过，Linux 侧待目标机验证。**
-- **`TextMetricsUtil`**：渲染前同步量行数 / 块高（不等帧、不 reflow）。
+① **四角圆角降级的 id 唯一化写错了**（5.11 档）——
+   `counters[key] += n_hit` 是函数末尾才加的，我用它拼 id，
+   于是同一文件里两个 `QtObject` 同名 ⇒ QML 报 `id is not unique`
+   ⇒ `TDesign` 整个类型 unavailable。⚠ 那一刻实例化门 / 残留门 /
+   漂移门**全是绿的** —— 它们不覆盖 `slots/`。
+
+② **同款 ReferenceError，5.15 档也中招** —— ①的修复我只给5.11 开了，
+   理由是「5.15 已验证过」。⇒ 教训：**「某档已验证过」不能推出
+   「某条规则只对另一档成立」**。
+
+③ **Qt 官方二进制不带字体** —— `lib/fonts/` 在 5.11.1 / 5.15.2 / 6.8.3
+   **三个版本里全都不存在**，而Qt 只认自己那份 ⇒ 中文全是空心方框，
+   **引擎零报错**。⚠ **不是库的 bug**。`install-qt.sh` 现在自动补。
+
+### 新增门禁
+
+`tools/check-qt511-slots.py`（插槽层）：零加载期错误 / 抓图有内容 /
+**中文字形真的画出来了**（同一场景跑两遍比前景像素：3392 : 2512 = 1.35）。
+证伪做过：注入 id 冲突变红、移走雅黑变红。
 
 ### 读数（都可复算，命令写在 README / COVERAGE）
 
